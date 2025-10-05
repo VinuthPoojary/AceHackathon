@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthProvider";
 import { toast } from "@/components/ui/sonner";
 
@@ -20,16 +21,28 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   staffId: z.string().min(1),
+  hospitalId: z.string().min(1),
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
 type RegisterForm = z.infer<typeof registerSchema>;
+
+// Hospital data for staff authentication
+const HOSPITALS = [
+  { id: 1, name: "Kasturba Medical College Hospital", address: "NH 66, Near Hiriadka, Udupi" },
+  { id: 2, name: "Dr. TMA Pai Hospital", address: "Kunjibettu, Udupi" },
+  { id: 3, name: "Manipal Hospital Udupi", address: "Udupi-Hebri Road, Udupi" },
+  { id: 4, name: "Baliga Memorial Hospital", address: "Bejai Kapikad, Udupi" },
+  { id: 5, name: "Adarsha Hospital", address: "Malpe Road, Udupi" }
+];
 
 export default function StaffAuth() {
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const navigate = useNavigate();
   const { loginStaff, registerStaff } = useAuth();
   const [staffId, setStaffId] = useState("");
+  const [selectedHospital, setSelectedHospital] = useState("");
+  const [showSwitchToLogin, setShowSwitchToLogin] = useState(false);
 
   const loginForm = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -41,7 +54,11 @@ export default function StaffAuth() {
 
   const onLogin = async (data: LoginForm) => {
     try {
-      await loginStaff(data.email, data.password, staffId);
+      if (!staffId || !selectedHospital) {
+        toast.error("Please provide Staff ID and select a hospital");
+        return;
+      }
+      await loginStaff(data.email, data.password, staffId, selectedHospital);
       navigate("/staff");
     } catch (error: any) {
       toast.error(error.message || "Invalid credentials");
@@ -50,11 +67,15 @@ export default function StaffAuth() {
 
   const onRegister = async (data: RegisterForm) => {
     try {
-      await registerStaff(data.email, data.password, data.name, data.staffId);
+      await registerStaff(data.email, data.password, data.name, data.staffId, data.hospitalId);
       toast.success("Registered successfully");
       setActiveTab("login");
+      setShowSwitchToLogin(false);
     } catch (error: any) {
-      toast.error(error.message || "Registration failed");
+      if (error.message === 'Email already in use.') {
+        setShowSwitchToLogin(true);
+      }
+      // Error toast is already shown in AuthProvider
     }
   };
 
@@ -89,13 +110,27 @@ export default function StaffAuth() {
 
         {activeTab === "login" && (
           <>
-            <input
-              type="text"
-              placeholder="Staff ID"
-              value={staffId}
-              onChange={(e) => setStaffId(e.target.value)}
-              className="mb-4 p-2 border rounded w-full"
-            />
+            <div className="mb-4 space-y-3">
+              <input
+                type="text"
+                placeholder="Staff ID"
+                value={staffId}
+                onChange={(e) => setStaffId(e.target.value)}
+                className="p-2 border rounded w-full"
+              />
+              <Select value={selectedHospital} onValueChange={setSelectedHospital}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Hospital" />
+                </SelectTrigger>
+                <SelectContent>
+                  {HOSPITALS.map((hospital) => (
+                    <SelectItem key={hospital.id} value={hospital.id.toString()}>
+                      {hospital.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Form {...loginForm}>
               <form onSubmit={loginForm.handleSubmit(onLogin)} className="bg-white shadow-md border rounded-lg p-6 space-y-4">
                 <FormField
@@ -185,7 +220,49 @@ export default function StaffAuth() {
                   </FormItem>
                 )}
               />
+              <FormField
+                control={registerForm.control}
+                name="hospitalId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Hospital</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Hospital" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {HOSPITALS.map((hospital) => (
+                          <SelectItem key={hospital.id} value={hospital.id.toString()}>
+                            {hospital.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <Button type="submit" className="w-full">Register</Button>
+              {showSwitchToLogin && (
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800 mb-2">
+                    This email is already registered. Would you like to login instead?
+                  </p>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    className="w-full"
+                    onClick={() => {
+                      setActiveTab("login");
+                      setShowSwitchToLogin(false);
+                    }}
+                  >
+                    Switch to Login
+                  </Button>
+                </div>
+              )}
             </form>
           </Form>
         )}

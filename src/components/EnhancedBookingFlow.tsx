@@ -291,7 +291,10 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
   };
 
   const handleBooking = async () => {
-    if (!currentUser || !selectedDoctor || !bookingData.hospital) return;
+    if (!currentUser || !selectedDoctor || !bookingData.hospital) {
+      alert("Please log in to book an appointment.");
+      return;
+    }
 
     setIsBooking(true);
     try {
@@ -328,13 +331,25 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
       };
 
       // Save booking to Firestore
-      await addDoc(collection(db, "bookings"), booking);
+      const bookingRef = await addDoc(collection(db, "bookings"), booking);
       
       setBookingSuccess(true);
-      onBookingComplete(booking);
-    } catch (error) {
+      onBookingComplete({ ...booking, id: bookingRef.id });
+    } catch (error: any) {
       console.error("Error creating booking:", error);
-      alert("Booking failed. Please try again.");
+      
+      // Provide more specific error messages
+      let errorMessage = "Booking failed. Please try again.";
+      
+      if (error.code === 'permission-denied') {
+        errorMessage = "Permission denied. Please make sure you're logged in and try again.";
+      } else if (error.code === 'unavailable') {
+        errorMessage = "Service temporarily unavailable. Please try again in a moment.";
+      } else if (error.code === 'unauthenticated') {
+        errorMessage = "Please log in to book an appointment.";
+      }
+      
+      alert(errorMessage);
     } finally {
       setIsBooking(false);
     }
