@@ -10,6 +10,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "@/components/ui/sonner";
 import { 
   Calendar as CalendarIcon,
   Clock,
@@ -39,8 +40,9 @@ import {
   Languages
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthProvider";
+import { ALL_HOSPITALS, type Hospital } from "@/data/hospitals";
 import { db } from "@/lib/firebase";
-import { addDoc, collection, doc, getDoc, query, where, onSnapshot } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc } from "firebase/firestore";
 
 interface BookingData {
   hospital: any;
@@ -70,18 +72,7 @@ interface Doctor {
   languages: string[];
 }
 
-interface Hospital {
-  id: string;
-  name: string;
-  address: string;
-  phone: string;
-  specialties: string[];
-  rating: number;
-  facilities: string[];
-  emergencyAvailable: boolean;
-  operatingHours: string;
-  priceRange: string;
-}
+// Using the Hospital interface from hospitals.ts
 
 const DEPARTMENTS = [
   { id: "emergency", name: "Emergency", icon: "🚨", color: "text-red-500", bgColor: "bg-red-50" },
@@ -96,68 +87,43 @@ const DEPARTMENTS = [
   { id: "general", name: "General Medicine", icon: "🩺", color: "text-gray-500", bgColor: "bg-gray-50" }
 ];
 
-// Enhanced hospital data with more realistic information
-const HOSPITALS: Hospital[] = [
-  {
-    id: "h1",
-    name: "Kasturba Medical College Hospital",
-    address: "NH 66, Near Hiriadka, Udupi, Karnataka 576104",
-    phone: "+91 820 292 2200",
-    specialties: ["Emergency", "Cardiology", "Neurology", "Orthopedics", "Pediatrics", "Gynecology", "Dermatology", "Ophthalmology", "ENT", "General"],
-    rating: 4.2,
-    facilities: ["ICU", "NICU", "Ambulance", "Pharmacy", "Laboratory", "Radiology", "MRI", "CT Scan", "Dialysis"],
-    emergencyAvailable: true,
-    operatingHours: "24/7",
-    priceRange: "₹500-2000"
-  },
-  {
-    id: "h2",
-    name: "Dr. TMA Pai Hospital",
-    address: "Kunjibettu, Udupi, Karnataka 576102",
-    phone: "+91 820 429 8000",
-    specialties: ["Emergency", "Internal Medicine", "Surgery", "Gynecology", "Dermatology", "General"],
-    rating: 4.0,
-    facilities: ["ICU", "Ambulance", "Pharmacy", "Laboratory", "X-Ray"],
-    emergencyAvailable: true,
-    operatingHours: "6:00 AM - 10:00 PM",
-    priceRange: "₹300-1500"
-  },
-  {
-    id: "h3",
-    name: "Manipal Hospital Udupi",
-    address: "Udupi-Hebri Road, Udupi, Karnataka 576101",
-    phone: "+91 820 429 9000",
-    specialties: ["Emergency", "Cardiology", "Orthopedics", "Pediatrics", "ENT", "Neurology"],
-    rating: 4.3,
-    facilities: ["ICU", "NICU", "Ambulance", "Pharmacy", "Laboratory", "MRI", "CT Scan"],
-    emergencyAvailable: true,
-    operatingHours: "24/7",
-    priceRange: "₹800-2500"
-  }
-];
+// Using the comprehensive hospital data from hospitals.ts
+const HOSPITALS: Hospital[] = ALL_HOSPITALS;
 
 // Enhanced doctor data with hospital associations
 const DOCTORS: Record<string, Doctor[]> = {
   emergency: [
-    { id: "dr1", name: "Dr. Rajesh Kumar", specialty: "Emergency Medicine", experience: "15 years", rating: 4.8, availability: ["24/7"], consultationFee: 800, nextAvailable: "Available now", hospitalId: "h1", qualifications: ["MD Emergency Medicine", "MBBS"], languages: ["English", "Hindi", "Kannada"] },
-    { id: "dr2", name: "Dr. Priya Sharma", specialty: "Emergency Medicine", experience: "12 years", rating: 4.6, availability: ["24/7"], consultationFee: 750, nextAvailable: "Available now", hospitalId: "h3", qualifications: ["MD Emergency Medicine", "MBBS"], languages: ["English", "Hindi", "Tulu"] }
+    { id: "dr1", name: "Dr. Rajesh Kumar", specialty: "Emergency Medicine", experience: "15 years", rating: 4.8, availability: ["24/7"], consultationFee: 800, nextAvailable: "Available now", hospitalId: "UDP001", qualifications: ["MD Emergency Medicine", "MBBS"], languages: ["English", "Hindi", "Kannada"] },
+    { id: "dr2", name: "Dr. Priya Sharma", specialty: "Emergency Medicine", experience: "12 years", rating: 4.6, availability: ["24/7"], consultationFee: 750, nextAvailable: "Available now", hospitalId: "UDP003", qualifications: ["MD Emergency Medicine", "MBBS"], languages: ["English", "Hindi", "Tulu"] },
+    { id: "dr10", name: "Dr. Suresh Bhat", specialty: "Emergency Medicine", experience: "10 years", rating: 4.4, availability: ["24/7"], consultationFee: 600, nextAvailable: "Available now", hospitalId: "UDP004", qualifications: ["MD Emergency Medicine", "MBBS"], languages: ["English", "Hindi", "Kannada"] },
+    { id: "dr11", name: "Dr. Lakshmi Rao", specialty: "Emergency Medicine", experience: "13 years", rating: 4.5, availability: ["24/7"], consultationFee: 700, nextAvailable: "Available now", hospitalId: "UDP005", qualifications: ["MD Emergency Medicine", "MBBS"], languages: ["English", "Hindi", "Tulu"] }
   ],
   cardiology: [
-    { id: "dr3", name: "Dr. Amit Patel", specialty: "Cardiology", experience: "20 years", rating: 4.9, availability: ["Mon-Fri 9AM-5PM", "Sat 9AM-1PM"], consultationFee: 1500, nextAvailable: "Today 2:00 PM", hospitalId: "h1", qualifications: ["DM Cardiology", "MD Medicine", "MBBS"], languages: ["English", "Hindi", "Gujarati"] },
-    { id: "dr4", name: "Dr. Sunita Reddy", specialty: "Cardiology", experience: "18 years", rating: 4.7, availability: ["Mon-Wed-Fri 10AM-4PM"], consultationFee: 1400, nextAvailable: "Tomorrow 10:00 AM", hospitalId: "h3", qualifications: ["DM Cardiology", "MD Medicine", "MBBS"], languages: ["English", "Telugu", "Kannada"] }
+    { id: "dr3", name: "Dr. Amit Patel", specialty: "Cardiology", experience: "20 years", rating: 4.9, availability: ["Mon-Fri 9AM-5PM", "Sat 9AM-1PM"], consultationFee: 1500, nextAvailable: "Today 2:00 PM", hospitalId: "UDP001", qualifications: ["DM Cardiology", "MD Medicine", "MBBS"], languages: ["English", "Hindi", "Gujarati"] },
+    { id: "dr4", name: "Dr. Sunita Reddy", specialty: "Cardiology", experience: "18 years", rating: 4.7, availability: ["Mon-Wed-Fri 10AM-4PM"], consultationFee: 1400, nextAvailable: "Tomorrow 10:00 AM", hospitalId: "UDP003", qualifications: ["DM Cardiology", "MD Medicine", "MBBS"], languages: ["English", "Telugu", "Kannada"] },
+    { id: "dr12", name: "Dr. Venkatesh Iyer", specialty: "Cardiology", experience: "16 years", rating: 4.6, availability: ["Mon-Fri 9AM-5PM"], consultationFee: 1200, nextAvailable: "Tomorrow 2:00 PM", hospitalId: "UDP005", qualifications: ["DM Cardiology", "MD Medicine", "MBBS"], languages: ["English", "Hindi", "Tamil"] }
   ],
   neurology: [
-    { id: "dr5", name: "Dr. Vikram Singh", specialty: "Neurology", experience: "22 years", rating: 4.8, availability: ["Tue-Thu-Sat 9AM-3PM"], consultationFee: 1800, nextAvailable: "Tuesday 9:00 AM", hospitalId: "h1", qualifications: ["DM Neurology", "MD Medicine", "MBBS"], languages: ["English", "Hindi", "Punjabi"] }
+    { id: "dr5", name: "Dr. Vikram Singh", specialty: "Neurology", experience: "22 years", rating: 4.8, availability: ["Tue-Thu-Sat 9AM-3PM"], consultationFee: 1800, nextAvailable: "Tuesday 9:00 AM", hospitalId: "UDP001", qualifications: ["DM Neurology", "MD Medicine", "MBBS"], languages: ["English", "Hindi", "Punjabi"] },
+    { id: "dr13", name: "Dr. Nandini Shetty", specialty: "Neurology", experience: "15 years", rating: 4.5, availability: ["Mon-Wed-Fri 10AM-4PM"], consultationFee: 1600, nextAvailable: "Tomorrow 10:00 AM", hospitalId: "UDP005", qualifications: ["DM Neurology", "MD Medicine", "MBBS"], languages: ["English", "Hindi", "Kannada"] }
   ],
   orthopedics: [
-    { id: "dr6", name: "Dr. Meera Joshi", specialty: "Orthopedics", experience: "16 years", rating: 4.6, availability: ["Mon-Fri 8AM-6PM"], consultationFee: 1200, nextAvailable: "Today 3:30 PM", hospitalId: "h2", qualifications: ["MS Orthopedics", "MBBS"], languages: ["English", "Hindi", "Marathi"] },
-    { id: "dr7", name: "Dr. Ravi Kumar", specialty: "Orthopedics", experience: "14 years", rating: 4.7, availability: ["Mon-Sat 9AM-5PM"], consultationFee: 1100, nextAvailable: "Today 4:00 PM", hospitalId: "h3", qualifications: ["MS Orthopedics", "MBBS"], languages: ["English", "Hindi", "Tamil"] }
+    { id: "dr6", name: "Dr. Meera Joshi", specialty: "Orthopedics", experience: "16 years", rating: 4.6, availability: ["Mon-Fri 8AM-6PM"], consultationFee: 1200, nextAvailable: "Today 3:30 PM", hospitalId: "UDP002", qualifications: ["MS Orthopedics", "MBBS"], languages: ["English", "Hindi", "Marathi"] },
+    { id: "dr7", name: "Dr. Ravi Kumar", specialty: "Orthopedics", experience: "14 years", rating: 4.7, availability: ["Mon-Sat 9AM-5PM"], consultationFee: 1100, nextAvailable: "Today 4:00 PM", hospitalId: "UDP003", qualifications: ["MS Orthopedics", "MBBS"], languages: ["English", "Hindi", "Tamil"] },
+    { id: "dr14", name: "Dr. Ashok Kumar", specialty: "Orthopedics", experience: "18 years", rating: 4.4, availability: ["Mon-Fri 9AM-5PM"], consultationFee: 1000, nextAvailable: "Tomorrow 11:00 AM", hospitalId: "UDP005", qualifications: ["MS Orthopedics", "MBBS"], languages: ["English", "Hindi", "Kannada"] }
   ],
   pediatrics: [
-    { id: "dr8", name: "Dr. Kavitha Nair", specialty: "Pediatrics", experience: "14 years", rating: 4.7, availability: ["Mon-Sat 9AM-5PM"], consultationFee: 900, nextAvailable: "Today 4:00 PM", hospitalId: "h1", qualifications: ["MD Pediatrics", "MBBS"], languages: ["English", "Malayalam", "Kannada"] }
+    { id: "dr8", name: "Dr. Kavitha Nair", specialty: "Pediatrics", experience: "14 years", rating: 4.7, availability: ["Mon-Sat 9AM-5PM"], consultationFee: 900, nextAvailable: "Today 4:00 PM", hospitalId: "UDP001", qualifications: ["MD Pediatrics", "MBBS"], languages: ["English", "Malayalam", "Kannada"] },
+    { id: "dr15", name: "Dr. Radha Menon", specialty: "Pediatrics", experience: "12 years", rating: 4.6, availability: ["Mon-Fri 9AM-5PM"], consultationFee: 800, nextAvailable: "Tomorrow 2:00 PM", hospitalId: "UDP004", qualifications: ["MD Pediatrics", "MBBS"], languages: ["English", "Malayalam", "Kannada"] }
   ],
   gynecology: [
-    { id: "dr9", name: "Dr. Anjali Gupta", specialty: "Gynecology", experience: "16 years", rating: 4.5, availability: ["Mon-Fri 10AM-6PM"], consultationFee: 1000, nextAvailable: "Tomorrow 11:00 AM", hospitalId: "h2", qualifications: ["MS Obstetrics & Gynecology", "MBBS"], languages: ["English", "Hindi", "Kannada"] }
+    { id: "dr9", name: "Dr. Anjali Gupta", specialty: "Gynecology", experience: "16 years", rating: 4.5, availability: ["Mon-Fri 10AM-6PM"], consultationFee: 1000, nextAvailable: "Tomorrow 11:00 AM", hospitalId: "UDP002", qualifications: ["MS Obstetrics & Gynecology", "MBBS"], languages: ["English", "Hindi", "Kannada"] },
+    { id: "dr16", name: "Dr. Shobha Reddy", specialty: "Gynecology", experience: "14 years", rating: 4.4, availability: ["Mon-Sat 9AM-5PM"], consultationFee: 900, nextAvailable: "Today 3:00 PM", hospitalId: "UDP004", qualifications: ["MS Obstetrics & Gynecology", "MBBS"], languages: ["English", "Hindi", "Telugu"] }
+  ],
+  "general medicine": [
+    { id: "dr17", name: "Dr. Ramesh Shetty", specialty: "General Medicine", experience: "20 years", rating: 4.6, availability: ["Mon-Fri 9AM-6PM"], consultationFee: 700, nextAvailable: "Today 2:00 PM", hospitalId: "UDP002", qualifications: ["MD Medicine", "MBBS"], languages: ["English", "Hindi", "Kannada"] },
+    { id: "dr18", name: "Dr. Geetha Prasad", specialty: "General Medicine", experience: "18 years", rating: 4.5, availability: ["Mon-Sat 8AM-5PM"], consultationFee: 600, nextAvailable: "Tomorrow 9:00 AM", hospitalId: "UDP004", qualifications: ["MD Medicine", "MBBS"], languages: ["English", "Hindi", "Tulu"] },
+    { id: "dr19", name: "Dr. Manjunath Rao", specialty: "General Medicine", experience: "15 years", rating: 4.4, availability: ["Mon-Fri 10AM-6PM"], consultationFee: 650, nextAvailable: "Today 4:00 PM", hospitalId: "UDP005", qualifications: ["MD Medicine", "MBBS"], languages: ["English", "Hindi", "Kannada"] }
   ]
 };
 
@@ -292,7 +258,7 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
 
   const handleBooking = async () => {
     if (!currentUser || !selectedDoctor || !bookingData.hospital) {
-      alert("Please log in to book an appointment.");
+      toast.error("Please log in to book an appointment.");
       return;
     }
 
@@ -302,7 +268,7 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
       const paymentSuccess = await processPayment();
       
       if (!paymentSuccess) {
-        alert("Payment failed. Please try again.");
+        toast.error("Payment failed. Please try again.");
         setIsBooking(false);
         return;
       }
@@ -333,6 +299,39 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
       // Save booking to Firestore
       const bookingRef = await addDoc(collection(db, "bookings"), booking);
       
+      // Add to queue system
+      try {
+        const queueId = await addToQueue({
+          patientId: currentUser.uid,
+          patientName: patientProfile?.fullName || "Unknown",
+          hospitalId: bookingData.hospital.id,
+          hospitalName: bookingData.hospital.hospitalName,
+          department: bookingData.department,
+          doctorId: selectedDoctor?.id,
+          doctorName: selectedDoctor?.name,
+          appointmentType: bookingData.appointmentType,
+          priority: bookingData.urgency === 'urgent' ? 'urgent' : 
+                   bookingData.urgency === 'high' ? 'high' : 'normal',
+          bookingId: booking.id,
+          estimatedWaitTime: 0 // Will be calculated in the service
+        });
+        
+        // Update booking with queue information
+        const queueNumber = await generateQueueNumber(bookingData.hospital.id, bookingData.department);
+        await addDoc(collection(db, "bookings"), {
+          ...booking,
+          queueId,
+          queueNumber,
+          estimatedWaitTime: 20 + (queueNumber - 1) * 5 // Simple estimation
+        });
+        
+        toast.success(`Booking confirmed! Your queue number is ${queueNumber}. Please arrive 15 minutes before your appointment.`);
+      } catch (queueError) {
+        console.error("Error adding to queue:", queueError);
+        // Still proceed with booking even if queue fails
+        toast.success("Booking confirmed! Queue system temporarily unavailable.");
+      }
+      
       setBookingSuccess(true);
       onBookingComplete({ ...booking, id: bookingRef.id });
     } catch (error: any) {
@@ -349,7 +348,7 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
         errorMessage = "Please log in to book an appointment.";
       }
       
-      alert(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsBooking(false);
     }

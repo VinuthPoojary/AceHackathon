@@ -1,0 +1,15 @@
+{
+  "functions": {
+    "api/send-email.ts": {
+      "runtime": "nodejs18.x"
+    }
+  },
+  "env": {
+    "SMTP_HOST": "@smtp_host",
+    "SMTP_PORT": "@smtp_port", 
+    "SMTP_SECURE": "@smtp_secure",
+    "SMTP_USER": "@smtp_user",
+    "SMTP_PASS": "@smtp_pass",
+    "SMTP_FROM": "@smtp_from"
+  }
+}

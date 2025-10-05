@@ -12,6 +12,7 @@ import { SOSEmergency } from "@/components/SOSEmergency";
 import { EnhancedBookingFlow } from "@/components/EnhancedBookingFlow";
 import PatientDashboard from "./PatientDashboard";
 import { useAuth } from "@/contexts/AuthProvider";
+import { toast } from "@/components/ui/sonner";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, addDoc, collection } from "firebase/firestore";
 import RealTimeQueueDetails from "@/components/RealTimeQueueDetails";
@@ -197,7 +198,7 @@ const PatientPortal = () => {
 
   const handleCheckIn = () => {
     if (!isProfileComplete()) {
-      alert("Please complete your profile before check-in.");
+      toast.error("Please complete your profile before check-in.");
       return;
     }
     const price = calculatePrice();
@@ -205,7 +206,7 @@ const PatientPortal = () => {
       // Simulate Razorpay payment gateway
       setPaymentProcessing(true);
       setTimeout(() => {
-        alert(`Payment of ₹${price} successful!`);
+        toast.success(`Payment of ₹${price} successful!`);
         handlePaymentSuccess();
       }, 2000);
     } else {
@@ -382,7 +383,93 @@ const PatientPortal = () => {
                 </div>
               </Card>
             ) : (
-              <RealTimeQueueDetails patientId={editableId} department={selectedDepartment} />
+              <div className="max-w-4xl mx-auto space-y-6">
+                <Card className="p-6 shadow-elevated bg-gradient-to-br from-card to-accent/5">
+                  <div className="flex items-center justify-between mb-6">
+                    <Badge className="bg-secondary text-secondary-foreground">Checked In</Badge>
+                    <span className="text-sm text-muted-foreground">Department: {selectedDepartment}</span>
+                  </div>
+
+                  <QueuePosition hospitalId={selectedHospital?.id} />
+
+                  <div className="grid md:grid-cols-3 gap-4 mt-6">
+                    <Card className="p-4 bg-background/50">
+                      <div className="flex items-center space-x-3">
+                        <User className="h-5 w-5 text-primary" />
+                        <div>
+                          <p className="text-sm text-muted-foreground">Patients Ahead</p>
+                          <p className="text-2xl font-bold">{queuePosition - 1}</p>
+                        </div>
+                      </div>
+                    </Card>
+
+                    <Card className="p-4 bg-background/50">
+                      <div className="flex items-center space-x-3">
+                        <Clock className="h-5 w-5 text-warning" />
+                        <div>
+                          <p className="text-sm text-muted-foreground">Est. Wait Time</p>
+                          <p className="text-2xl font-bold">{estimatedWait} min</p>
+                        </div>
+                      </div>
+                    </Card>
+
+                    <Card className="p-4 bg-background/50">
+                      <div className="flex items-center space-x-3">
+                        <Calendar className="h-5 w-5 text-secondary" />
+                        <div>
+                          <p className="text-sm text-muted-foreground">Status</p>
+                          <p className="text-lg font-semibold text-secondary">In Queue</p>
+                        </div>
+                      </div>
+                    </Card>
+                  </div>
+                </Card>
+
+                {/* Progress Timeline */}
+                <Card className="p-6 shadow-card">
+                  <h3 className="font-semibold mb-4">Your Journey</h3>
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
+                        <CheckCircle className="h-5 w-5 text-secondary-foreground" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium">Checked In</p>
+                        <p className="text-sm text-muted-foreground">Completed</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-4">
+                      <div className="w-8 h-8 rounded-full bg-warning flex items-center justify-center">
+                        <Clock className="h-5 w-5 text-warning-foreground" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium">Waiting in Queue</p>
+                        <p className="text-sm text-muted-foreground">Current status</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-4">
+                      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                        <User className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium">Consultation</p>
+                        <p className="text-sm text-muted-foreground">Upcoming</p>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                <div className="flex justify-center">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsCheckedIn(false)}
+                  >
+                    Cancel Check-In
+                  </Button>
+                </div>
+              </div>
             )}
           </TabsContent>
         </Tabs>

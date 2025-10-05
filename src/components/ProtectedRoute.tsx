@@ -4,11 +4,11 @@ import { ReactNode } from 'react';
 
 interface ProtectedRouteProps {
   children: ReactNode;
-  type: 'patient' | 'staff';
+  type: 'patient';
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, type }) => {
-  const { isPatientLoggedIn, isStaffLoggedIn, isLoading } = useAuth();
+  const { isPatientLoggedIn, isLoading } = useAuth();
 
   // Show loading spinner while authentication state is being determined
   if (isLoading) {
@@ -27,10 +27,6 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, type }) => {
 
   if (type === 'patient' && !isPatientLoggedIn) {
     return <Navigate to="/auth/patient" replace />;
-  }
-
-  if (type === 'staff' && !isStaffLoggedIn) {
-    return <Navigate to="/auth/staff" replace />;
   }
 
   return <>{children}</>;

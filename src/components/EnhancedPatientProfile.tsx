@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "@/components/ui/sonner";
 import { 
   User, 
   Phone, 
@@ -127,6 +128,7 @@ export const EnhancedPatientProfile = () => {
     } catch (error) {
       console.error("Error fetching profile:", error);
       setSaveStatus('error');
+      toast.error('Failed to load profile. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -140,10 +142,12 @@ export const EnhancedPatientProfile = () => {
       await setDoc(doc(db, "patients", currentUser.uid), profile);
       setIsEditing(false);
       setSaveStatus('success');
+      toast.success('Profile saved successfully!');
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (error) {
       console.error("Error saving profile:", error);
       setSaveStatus('error');
+      toast.error('Failed to save profile. Please try again.');
     } finally {
       setIsSaving(false);
     }
