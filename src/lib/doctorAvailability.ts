@@ -90,35 +90,68 @@ export function getNextAvailableDate(doctor: DoctorAvailability): Date {
  */
 export function formatAvailabilityStatus(doctor: DoctorAvailability): string {
   if (doctor.status !== 'active') {
-    return 'Currently Unavailable';
+    return 'Not Available for Booking';
   }
 
   if (doctor.availableTime === '24/7') {
     return 'Available 24/7';
   }
 
-  const daysCount = doctor.availableDays.length;
+  const daysCount = doctor.availableDays?.length || 0;
   const daysText = daysCount === 7 ? 'All Days' : `${daysCount} Days`;
   
   return `${daysText} • ${doctor.availableTime}`;
 }
 
 /**
- * Check if a doctor is available for booking (active status and has working days)
+ * Check if a doctor is available for booking (active status only)
  */
 export function isDoctorAvailableNow(doctor: DoctorAvailability): boolean {
-  // Only check if doctor is active and has working days
-  // Patients can book future appointments even if doctor isn't available right now
-  if (doctor.status !== 'active') {
-    return false;
-  }
+  // If doctor is active, they are available for booking
+  // Working days and time are checked during appointment scheduling
+  return doctor.status === 'active';
+}
 
-  // Check if doctor has any working days
-  if (!doctor.availableDays || doctor.availableDays.length === 0) {
-    return false;
+/**
+ * Check if booking is allowed based on advance booking rules
+ */
+export function isBookingAllowed(selectedDate: Date, appointmentType: string): { allowed: boolean; reason?: string } {
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0); // Start of tomorrow
+  
+  // Emergency appointments can be booked anytime
+  if (appointmentType === 'emergency') {
+    return { allowed: true };
   }
+  
+  // For non-emergency appointments, must book at least 24 hours in advance
+  if (selectedDate < tomorrow) {
+    return { 
+      allowed: false, 
+      reason: 'Non-emergency appointments must be booked at least 24 hours in advance. Please select tomorrow or later.' 
+    };
+  }
+  
+  return { allowed: true };
+}
 
-  return true;
+/**
+ * Get minimum allowed date for booking based on appointment type
+ */
+export function getMinimumBookingDate(appointmentType: string): Date {
+  const now = new Date();
+  
+  // Emergency appointments can be booked for today
+  if (appointmentType === 'emergency') {
+    return now;
+  }
+  
+  // Non-emergency appointments require 24 hours advance booking
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return tomorrow;
 }
 
 /**

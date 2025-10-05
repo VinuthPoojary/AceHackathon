@@ -43,7 +43,7 @@ import { ALL_HOSPITALS, type Hospital } from "@/data/hospitals";
 import { db } from "@/lib/firebase";
 import { addDoc, collection, doc, getDoc, query, where, onSnapshot, getDocs } from "firebase/firestore";
 import { addToQueue, generateQueueNumber } from "@/lib/queueService";
-import { isDoctorAvailableOnDate, formatAvailabilityStatus, isDoctorAvailableNow, isDoctorAvailableRightNow, getNextAvailableDate } from "@/lib/doctorAvailability";
+import { isDoctorAvailableOnDate, formatAvailabilityStatus, isDoctorAvailableNow, isDoctorAvailableRightNow, getNextAvailableDate, getAvailableTimeSlots, isBookingAllowed, getMinimumBookingDate } from "@/lib/doctorAvailability";
 
 interface BookingData {
   hospitalname: any;
@@ -347,7 +347,19 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
   };
 
   const updateBookingData = (field: keyof BookingData, value: any) => {
-    setBookingData(prev => ({ ...prev, [field]: value }));
+    setBookingData(prev => {
+      const updated = { ...prev, [field]: value };
+      
+      // If appointment type changes, reset preferred date to meet new requirements
+      if (field === 'appointmentType') {
+        const minDate = getMinimumBookingDate(value || '');
+        if (updated.preferredDate < minDate) {
+          updated.preferredDate = minDate;
+        }
+      }
+      
+      return updated;
+    });
     
     // If hospitalname is being selected, also update parent component
     if (field === 'hospitalname' && onHospitalSelect) {
@@ -389,6 +401,13 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
     // Check if the selected date is available for the doctor
     if (!isDoctorAvailableOnDate(selectedDoctor, bookingData.preferredDate)) {
       toast.error("Doctor is not available on the selected date. Please choose a different date.");
+      return;
+    }
+
+    // Check booking time restrictions
+    const bookingCheck = isBookingAllowed(bookingData.preferredDate, bookingData.appointmentType);
+    if (!bookingCheck.allowed) {
+      toast.error(bookingCheck.reason || "Booking not allowed for selected date and appointment type.");
       return;
     }
 
@@ -710,7 +729,13 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
         <Card className="animate-fade-in-up">
           <CardHeader>
             <CardTitle>Select Doctor</CardTitle>
-            <CardDescription>Choose your preferred doctor from {DEPARTMENTS.find(d => d.id === bookingData.department)?.name}</CardDescription>
+            <CardDescription>
+              Choose your preferred doctor from {DEPARTMENTS.find(d => d.id === bookingData.department)?.name}
+              <br />
+              <span className="text-sm text-muted-foreground mt-1 block">
+                💡 Active doctors are available for booking. Working days and times are checked during appointment scheduling.
+              </span>
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -788,9 +813,9 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
                       <div className="mt-3 pt-3 border-t">
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-muted-foreground">Availability:</span>
-                            <Badge variant={isDoctorAvailableNow(doctor) ? "default" : "secondary"} className="text-xs">
-                              {isDoctorAvailableNow(doctor) ? "Available for Booking" : "Not Available"}
+                            <span className="text-xs font-medium text-muted-foreground">Booking Status:</span>
+                            <Badge variant={isDoctorAvailableNow(doctor) ? "default" : "destructive"} className="text-xs">
+                              {isDoctorAvailableNow(doctor) ? "Available for Booking" : "Not Available for Booking"}
                             </Badge>
                           </div>
                           <div className="flex items-center gap-2">
@@ -814,6 +839,14 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
                               <span className="text-xs font-medium text-muted-foreground">Holidays:</span>
                               <Badge variant="outline" className="text-xs">
                                 {doctor.holidays.length} day{doctor.holidays.length > 1 ? 's' : ''} marked
+                              </Badge>
+                            </div>
+                          )}
+                          {isDoctorAvailableNow(doctor) && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-muted-foreground">Schedule:</span>
+                              <Badge variant="outline" className="text-xs">
+                                Book for any available day
                               </Badge>
                             </div>
                           )}
@@ -868,6 +901,34 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
             <CardDescription>Provide additional information for your appointment</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Booking Rules Information */}
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <h4 className="font-medium text-yellow-900 mb-2">📋 Booking Rules</h4>
+              <div className="text-sm text-yellow-800 space-y-1">
+                <p>• <strong>Emergency appointments:</strong> Can be booked anytime, including today</p>
+                <p>• <strong>Regular appointments:</strong> Must be booked at least 24 hours in advance</p>
+                <p>• <strong>Doctor availability:</strong> Only available dates will be shown</p>
+              </div>
+            </div>
+
+            {/* Selected Doctor Summary */}
+            {selectedDoctor && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="font-medium text-blue-900 mb-2">👨‍⚕️ Selected Doctor</h4>
+                <div className="grid md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p><strong>Name:</strong> {selectedDoctor.name}</p>
+                    <p><strong>Specialization:</strong> {selectedDoctor.specialization}</p>
+                    <p><strong>Experience:</strong> {selectedDoctor.experience} years</p>
+                  </div>
+                  <div>
+                    <p><strong>Qualification:</strong> {selectedDoctor.qualification}</p>
+                    <p><strong>Consultation Fee:</strong> ₹{selectedDoctor.consultationFee}</p>
+                    <p><strong>Available Time:</strong> {selectedDoctor.availableTime}</p>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="appointmentType">Appointment Type</Label>
@@ -923,8 +984,35 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
                   type="date"
                   value={bookingData.preferredDate.toISOString().split('T')[0]}
                   onChange={(e) => updateBookingData('preferredDate', new Date(e.target.value))}
-                  min={new Date().toISOString().split('T')[0]}
+                  min={getMinimumBookingDate(bookingData.appointmentType || '').toISOString().split('T')[0]}
+                  max={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
                 />
+                {selectedDoctor && (
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    <p>📅 Doctor's working days: {selectedDoctor.availableDays?.join(', ') || 'Not specified'}</p>
+                    {selectedDoctor.holidays && selectedDoctor.holidays.length > 0 && (
+                      <p className="text-orange-600">⚠️ Holidays: {selectedDoctor.holidays.join(', ')}</p>
+                    )}
+                    {bookingData.preferredDate && !isDoctorAvailableOnDate(selectedDoctor, bookingData.preferredDate) && (
+                      <p className="text-red-600">❌ Doctor is not available on this date</p>
+                    )}
+                    {bookingData.preferredDate && isDoctorAvailableOnDate(selectedDoctor, bookingData.preferredDate) && (
+                      <p className="text-green-600">✅ Doctor is available on this date</p>
+                    )}
+                    {bookingData.appointmentType && bookingData.preferredDate && (
+                      (() => {
+                        const bookingCheck = isBookingAllowed(bookingData.preferredDate, bookingData.appointmentType);
+                        if (!bookingCheck.allowed) {
+                          return <p className="text-red-600">⚠️ {bookingCheck.reason}</p>;
+                        }
+                        if (bookingData.appointmentType === 'emergency') {
+                          return <p className="text-blue-600">🚨 Emergency appointment - can be booked anytime</p>;
+                        }
+                        return <p className="text-green-600">✅ Booking time requirement met (24+ hours advance)</p>;
+                      })()
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <Label htmlFor="preferredTime">Preferred Time</Label>
@@ -936,15 +1024,30 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
                     <SelectValue placeholder="Select time slot" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="09:00">9:00 AM</SelectItem>
-                    <SelectItem value="10:00">10:00 AM</SelectItem>
-                    <SelectItem value="11:00">11:00 AM</SelectItem>
-                    <SelectItem value="14:00">2:00 PM</SelectItem>
-                    <SelectItem value="15:00">3:00 PM</SelectItem>
-                    <SelectItem value="16:00">4:00 PM</SelectItem>
-                    <SelectItem value="17:00">5:00 PM</SelectItem>
+                    {selectedDoctor ? (
+                      getAvailableTimeSlots(selectedDoctor.availableTime).map((time) => (
+                        <SelectItem key={time} value={time}>
+                          {time}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <>
+                        <SelectItem value="09:00">9:00 AM</SelectItem>
+                        <SelectItem value="10:00">10:00 AM</SelectItem>
+                        <SelectItem value="11:00">11:00 AM</SelectItem>
+                        <SelectItem value="14:00">2:00 PM</SelectItem>
+                        <SelectItem value="15:00">3:00 PM</SelectItem>
+                        <SelectItem value="16:00">4:00 PM</SelectItem>
+                        <SelectItem value="17:00">5:00 PM</SelectItem>
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
+                {selectedDoctor && (
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    <p>⏰ Doctor's available time: {selectedDoctor.availableTime}</p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -968,6 +1071,33 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
               />
             </div>
 
+            {/* Fee Breakdown */}
+            {selectedDoctor && bookingData.appointmentType && (
+              <div className="border rounded-lg p-4 bg-gray-50">
+                <h4 className="font-medium mb-3">💰 Fee Breakdown</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span>Doctor Consultation Fee:</span>
+                    <span>₹{selectedDoctor.consultationFee}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Appointment Type ({APPOINTMENT_TYPES.find(t => t.id === bookingData.appointmentType)?.name}):</span>
+                    <span>₹{APPOINTMENT_TYPES.find(t => t.id === bookingData.appointmentType)?.price || 0}</span>
+                  </div>
+                  <hr className="my-2" />
+                  <div className="flex justify-between font-medium text-base">
+                    <span>Total Amount:</span>
+                    <span>₹{calculateTotalPrice()}</span>
+                  </div>
+                  {bookingData.insuranceClaim && (
+                    <div className="text-blue-600 text-xs">
+                      💡 Insurance claim eligible - You'll pay 20% (₹{Math.round(calculateTotalPrice() * 0.2)})
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center space-x-2">
               <input
                 type="checkbox"
@@ -983,11 +1113,40 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Previous
               </Button>
-              <Button onClick={nextStep}>
+              <Button 
+                onClick={nextStep}
+                disabled={
+                  selectedDoctor && bookingData.preferredDate && (
+                    !isDoctorAvailableOnDate(selectedDoctor, bookingData.preferredDate) ||
+                    !isBookingAllowed(bookingData.preferredDate, bookingData.appointmentType || '').allowed
+                  )
+                }
+              >
                 Next Step
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </div>
+            {selectedDoctor && bookingData.preferredDate && (
+              (() => {
+                const doctorAvailable = isDoctorAvailableOnDate(selectedDoctor, bookingData.preferredDate);
+                const bookingAllowed = isBookingAllowed(bookingData.preferredDate, bookingData.appointmentType || '');
+                
+                if (!doctorAvailable || !bookingAllowed.allowed) {
+                  return (
+                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-red-600 text-sm">
+                        ⚠️ Please select a valid date to proceed:
+                      </p>
+                      <ul className="text-red-600 text-sm mt-2 ml-4">
+                        {!doctorAvailable && <li>• Doctor must be available on this date</li>}
+                        {!bookingAllowed.allowed && <li>• {bookingAllowed.reason}</li>}
+                      </ul>
+                    </div>
+                  );
+                }
+                return null;
+              })()
+            )}
           </CardContent>
         </Card>
       )}
@@ -1047,26 +1206,38 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
 
             {/* Pricing */}
             <div className="bg-muted p-4 rounded-lg">
-              <h3 className="font-medium mb-3">Pricing Breakdown</h3>
+              <h3 className="font-medium mb-3">💰 Payment Breakdown</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span>Consultation Fee:</span>
+                  <span>Doctor Consultation Fee:</span>
                   <span>₹{selectedDoctor?.consultationFee || 0}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Appointment Type:</span>
+                  <span>Appointment Type ({APPOINTMENT_TYPES.find(t => t.id === bookingData.appointmentType)?.name}):</span>
                   <span>₹{APPOINTMENT_TYPES.find(t => t.id === bookingData.appointmentType)?.price || 0}</span>
                 </div>
+                <div className="flex justify-between font-medium text-base border-t pt-2">
+                  <span>Subtotal:</span>
+                  <span>₹{calculateTotalPrice()}</span>
+                </div>
                 {bookingData.insuranceClaim && (
-                  <div className="flex justify-between text-green-600">
-                    <span>Insurance Coverage:</span>
-                    <span>-₹{Math.round(calculateTotalPrice() * 0.8)}</span>
+                  <>
+                    <div className="flex justify-between text-green-600">
+                      <span>Insurance Coverage (80%):</span>
+                      <span>-₹{Math.round(calculateTotalPrice() * 0.8)}</span>
+                    </div>
+                    <div className="flex justify-between text-blue-600 font-medium">
+                      <span>Your Payment (20%):</span>
+                      <span>₹{Math.round(calculateTotalPrice() * 0.2)}</span>
+                    </div>
+                  </>
+                )}
+                {!bookingData.insuranceClaim && (
+                  <div className="border-t pt-2 flex justify-between font-bold text-lg">
+                    <span>Total Amount to Pay:</span>
+                    <span>₹{calculateTotalPrice()}</span>
                   </div>
                 )}
-                <div className="border-t pt-2 flex justify-between font-medium">
-                  <span>Total Amount:</span>
-                  <span>₹{bookingData.insuranceClaim ? Math.round(calculateTotalPrice() * 0.2) : calculateTotalPrice()}</span>
-                </div>
               </div>
             </div>
 

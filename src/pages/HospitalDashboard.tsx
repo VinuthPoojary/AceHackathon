@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
 import { toast } from '@/components/ui/sonner';
 import { db } from '@/lib/firebase';
 import { collection, query, onSnapshot, doc, addDoc, updateDoc, where, orderBy } from 'firebase/firestore';
@@ -233,6 +234,17 @@ const HospitalDashboard: React.FC = () => {
     setIsEditDoctorOpen(true);
   };
 
+  const updateDoctorStatus = async (doctorId: string, newStatus: 'active' | 'inactive') => {
+    try {
+      const doctorRef = doc(db, 'doctors', doctorId);
+      await updateDoc(doctorRef, { status: newStatus });
+      toast.success(`Doctor status updated to ${newStatus}`);
+    } catch (error) {
+      console.error('Error updating doctor status:', error);
+      toast.error('Failed to update doctor status');
+    }
+  };
+
   const handleUpdateDoctor = async () => {
     if (!editingDoctor || !newDoctor.name || !newDoctor.specialization) {
       toast.error('Please fill in all required fields');
@@ -350,14 +362,36 @@ const HospitalDashboard: React.FC = () => {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">Total Doctors</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{doctors.length}</div>
-                <p className="text-xs text-muted-foreground">Active doctors</p>
+                <p className="text-xs text-muted-foreground">All doctors</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Active Doctors</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">
+                  {doctors.filter(d => d.status === 'active').length}
+                </div>
+                <p className="text-xs text-muted-foreground">Available for booking</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Inactive Doctors</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-red-600">
+                  {doctors.filter(d => d.status === 'inactive').length}
+                </div>
+                <p className="text-xs text-muted-foreground">Not available</p>
               </CardContent>
             </Card>
             <Card>
@@ -381,6 +415,72 @@ const HospitalDashboard: React.FC = () => {
               </CardContent>
             </Card>
           </div>
+          
+          {/* Quick Actions */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Quick Doctor Status Actions</CardTitle>
+              <CardDescription>Quickly manage doctor availability</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => {
+                    const inactiveDoctors = doctors.filter(d => d.status === 'inactive');
+                    if (inactiveDoctors.length === 0) {
+                      toast.info('All doctors are already active');
+                      return;
+                    }
+                    if (confirm(`Activate all ${inactiveDoctors.length} inactive doctors?`)) {
+                      inactiveDoctors.forEach(doctor => {
+                        updateDoctorStatus(doctor.id, 'active');
+                      });
+                      toast.success(`Activated ${inactiveDoctors.length} doctors`);
+                    }
+                  }}
+                  disabled={doctors.filter(d => d.status === 'inactive').length === 0}
+                >
+                  ✅ Activate All Inactive Doctors
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    const activeDoctors = doctors.filter(d => d.status === 'active');
+                    if (activeDoctors.length === 0) {
+                      toast.info('All doctors are already inactive');
+                      return;
+                    }
+                    if (confirm(`Deactivate all ${activeDoctors.length} active doctors?`)) {
+                      activeDoctors.forEach(doctor => {
+                        updateDoctorStatus(doctor.id, 'inactive');
+                      });
+                      toast.success(`Deactivated ${activeDoctors.length} doctors`);
+                    }
+                  }}
+                  disabled={doctors.filter(d => d.status === 'active').length === 0}
+                >
+                  ❌ Deactivate All Active Doctors
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const statusSummary = {
+                      total: doctors.length,
+                      active: doctors.filter(d => d.status === 'active').length,
+                      inactive: doctors.filter(d => d.status === 'inactive').length
+                    };
+                    toast.info(`Status Summary: ${statusSummary.active} active, ${statusSummary.inactive} inactive out of ${statusSummary.total} total doctors`);
+                  }}
+                >
+                  📊 Status Summary
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="doctors" className="space-y-4">
@@ -404,7 +504,51 @@ const HospitalDashboard: React.FC = () => {
                     <TableHead>Qualification</TableHead>
                     <TableHead>Consultation Fee</TableHead>
                     <TableHead>Available Time</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>
+                      <div className="flex items-center gap-2">
+                        Status
+                        <div className="flex gap-1 ml-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-xs"
+                            onClick={() => {
+                              const inactiveDoctors = doctors.filter(d => d.status === 'inactive');
+                              if (inactiveDoctors.length === 0) {
+                                toast.info('All doctors are already active');
+                                return;
+                              }
+                              if (confirm(`Activate all ${inactiveDoctors.length} inactive doctors?`)) {
+                                inactiveDoctors.forEach(doctor => {
+                                  updateDoctorStatus(doctor.id, 'active');
+                                });
+                              }
+                            }}
+                          >
+                            Activate All
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-xs"
+                            onClick={() => {
+                              const activeDoctors = doctors.filter(d => d.status === 'active');
+                              if (activeDoctors.length === 0) {
+                                toast.info('All doctors are already inactive');
+                                return;
+                              }
+                              if (confirm(`Deactivate all ${activeDoctors.length} active doctors?`)) {
+                                activeDoctors.forEach(doctor => {
+                                  updateDoctorStatus(doctor.id, 'inactive');
+                                });
+                              }
+                            }}
+                          >
+                            Deactivate All
+                          </Button>
+                        </div>
+                      </div>
+                    </TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -434,9 +578,24 @@ const HospitalDashboard: React.FC = () => {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={doctor.status === 'active' ? 'default' : 'secondary'}>
-                            {doctor.status}
-                          </Badge>
+                          <div className="flex items-center gap-3">
+                            <Badge variant={doctor.status === 'active' ? 'default' : 'secondary'}>
+                              {doctor.status}
+                            </Badge>
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={doctor.status === 'active'}
+                                onCheckedChange={(checked) => {
+                                  const newStatus = checked ? 'active' : 'inactive';
+                                  updateDoctorStatus(doctor.id, newStatus);
+                                }}
+                                disabled={!doctor.id}
+                              />
+                              <span className="text-xs text-muted-foreground">
+                                {doctor.status === 'active' ? 'Active' : 'Inactive'}
+                              </span>
+                            </div>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Button
