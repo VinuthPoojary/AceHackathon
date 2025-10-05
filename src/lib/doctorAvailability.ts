@@ -104,9 +104,27 @@ export function formatAvailabilityStatus(doctor: DoctorAvailability): string {
 }
 
 /**
- * Check if a doctor is available right now
+ * Check if a doctor is available for booking (active status and has working days)
  */
 export function isDoctorAvailableNow(doctor: DoctorAvailability): boolean {
+  // Only check if doctor is active and has working days
+  // Patients can book future appointments even if doctor isn't available right now
+  if (doctor.status !== 'active') {
+    return false;
+  }
+
+  // Check if doctor has any working days
+  if (!doctor.availableDays || doctor.availableDays.length === 0) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Check if a doctor is available right now (for real-time status)
+ */
+export function isDoctorAvailableRightNow(doctor: DoctorAvailability): boolean {
   if (doctor.status !== 'active') {
     return false;
   }
@@ -124,7 +142,6 @@ export function isDoctorAvailableNow(doctor: DoctorAvailability): boolean {
   }
 
   // For specific time ranges, check if current time falls within range
-  // This is a simplified check - in a real app, you'd parse the time range more precisely
   const currentHour = now.getHours();
   
   if (doctor.availableTime.includes('6:00 AM - 12:00 PM')) {

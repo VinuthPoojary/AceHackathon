@@ -43,7 +43,7 @@ import { ALL_HOSPITALS, type Hospital } from "@/data/hospitals";
 import { db } from "@/lib/firebase";
 import { addDoc, collection, doc, getDoc, query, where, onSnapshot, getDocs } from "firebase/firestore";
 import { addToQueue, generateQueueNumber } from "@/lib/queueService";
-import { isDoctorAvailableOnDate, formatAvailabilityStatus, isDoctorAvailableNow } from "@/lib/doctorAvailability";
+import { isDoctorAvailableOnDate, formatAvailabilityStatus, isDoctorAvailableNow, isDoctorAvailableRightNow, getNextAvailableDate } from "@/lib/doctorAvailability";
 
 interface BookingData {
   hospitalname: any;
@@ -377,6 +377,18 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
   const handleBooking = async () => {
     if (!currentUser || !selectedDoctor || !bookingData.hospitalname) {
       toast.error("Please log in to book an appointment.");
+      return;
+    }
+
+    // Validate doctor availability before booking
+    if (!isDoctorAvailableNow(selectedDoctor)) {
+      toast.error("Selected doctor is not available for booking. Please select another doctor.");
+      return;
+    }
+
+    // Check if the selected date is available for the doctor
+    if (!isDoctorAvailableOnDate(selectedDoctor, bookingData.preferredDate)) {
+      toast.error("Doctor is not available on the selected date. Please choose a different date.");
       return;
     }
 
@@ -718,10 +730,21 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
                 availableDoctors.map((doctor) => (
                   <Card
                     key={doctor.id}
-                    className={`cursor-pointer transition-all hover:shadow-md ${
-                      selectedDoctor?.id === doctor.id ? 'ring-2 ring-primary bg-primary/5' : ''
+                    className={`transition-all ${
+                      isDoctorAvailableNow(doctor) 
+                        ? `cursor-pointer hover:shadow-md ${
+                            selectedDoctor?.id === doctor.id ? 'ring-2 ring-primary bg-primary/5' : ''
+                          }`
+                        : 'cursor-not-allowed opacity-60 bg-gray-50'
                     }`}
-                    onClick={() => setSelectedDoctor(doctor)}
+                    onClick={() => {
+                      // Check if doctor is available for booking
+                      if (!isDoctorAvailableNow(doctor)) {
+                        alert('This doctor is not available for booking. Please select another doctor.');
+                        return;
+                      }
+                      setSelectedDoctor(doctor);
+                    }}
                   >
                     <CardContent className="p-4">
                       <div className="flex justify-between items-start">
@@ -767,7 +790,7 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-medium text-muted-foreground">Availability:</span>
                             <Badge variant={isDoctorAvailableNow(doctor) ? "default" : "secondary"} className="text-xs">
-                              {formatAvailabilityStatus(doctor)}
+                              {isDoctorAvailableNow(doctor) ? "Available for Booking" : "Not Available"}
                             </Badge>
                           </div>
                           <div className="flex items-center gap-2">
@@ -781,9 +804,9 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-muted-foreground">Status:</span>
-                            <Badge variant={isDoctorAvailableNow(doctor) ? 'default' : 'destructive'} className="text-xs">
-                              {isDoctorAvailableNow(doctor) ? 'Available Now' : 'Currently Unavailable'}
+                            <span className="text-xs font-medium text-muted-foreground">Current Status:</span>
+                            <Badge variant={isDoctorAvailableRightNow(doctor) ? 'default' : 'secondary'} className="text-xs">
+                              {isDoctorAvailableRightNow(doctor) ? 'Available Right Now' : 'Not Available Right Now'}
                             </Badge>
                           </div>
                           {doctor.holidays && doctor.holidays.length > 0 && (
@@ -791,6 +814,14 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
                               <span className="text-xs font-medium text-muted-foreground">Holidays:</span>
                               <Badge variant="outline" className="text-xs">
                                 {doctor.holidays.length} day{doctor.holidays.length > 1 ? 's' : ''} marked
+                              </Badge>
+                            </div>
+                          )}
+                          {!isDoctorAvailableNow(doctor) && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-muted-foreground">Next Available:</span>
+                              <Badge variant="outline" className="text-xs">
+                                {getNextAvailableDate(doctor).toLocaleDateString()}
                               </Badge>
                             </div>
                           )}
