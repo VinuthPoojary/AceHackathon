@@ -14,6 +14,8 @@ import StaffAuth from "./pages/StaffAuth";
 import { AuthProvider } from "./contexts/AuthProvider";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthDebugger } from "./components/AuthDebugger";
+import { DirectQueueJoin } from "./components/DirectQueueJoin";
+import { VirtualCheckIn } from "./components/VirtualCheckIn";
 
 const queryClient = new QueryClient();
 
@@ -46,6 +48,8 @@ const App = () => (
               }
             />
             <Route path="/display" element={<QueueDisplay />} />
+            <Route path="/direct-queue" element={<DirectQueueJoin />} />
+            <Route path="/virtual-checkin" element={<VirtualCheckIn />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

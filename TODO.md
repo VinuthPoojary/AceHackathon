@@ -1,13 +1,6 @@
-# TODO for Enhanced Booking Flow - Patients in Queue Feature
+# Real-Time Queue Details Fix and UI Improvement
 
-## Completed
-- Added Firestore listener on "checkins" collection filtered by selected hospital to track patients in queue count per department.
-- Updated department selection UI to display patients in queue count alongside doctors available.
-- Managed state for patientsInQueueCount and updated it in real-time using onSnapshot.
-- Ensured proper cleanup of Firestore listener on component unmount or hospital change.
-
-## Next Steps
-- Test the feature end-to-end to verify real-time updates of patients in queue count.
-- Verify UI responsiveness and correctness for different hospitals and departments.
-- Optionally, add loading or error handling states for Firestore listener.
-- Review and optimize Firestore query if needed for performance.
+## Tasks
+- [x] Fix patient entry lookup in RealTimeQueueDetails.tsx to use patientId field instead of document id
+- [x] Improve UI layout and styling for cleaner, more appealing design
+- [x] Test real-time updates after booking (Development server started on http://localhost:8081)
