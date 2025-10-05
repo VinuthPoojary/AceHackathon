@@ -1,19 +1,20 @@
 import { db } from './firebase';
-import { 
-  collection, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc, 
-  getDocs, 
-  query, 
-  where, 
-  orderBy, 
+import {
+  collection,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  getDocs,
+  query,
+  where,
+  orderBy,
   limit,
   onSnapshot,
   serverTimestamp,
   increment
 } from 'firebase/firestore';
+import { sendQueueNotification } from './notificationService';
 
 export interface QueueEntry {
   id: string;
@@ -101,32 +102,56 @@ export const addToQueue = async (queueData: Omit<QueueEntry, 'id' | 'queueNumber
 // Update queue entry status
 export const updateQueueStatus = async (queueId: string, status: QueueEntry['status'], notes?: string): Promise<void> => {
   try {
+    // Get current queue entry data before update
+    const queueDoc = await getDocs(query(collection(db, 'queue_entries'), where('__name__', '==', queueId)));
+    if (queueDoc.empty) {
+      throw new Error('Queue entry not found');
+    }
+
+    const currentData = queueDoc.docs[0].data() as QueueEntry;
+    const previousStatus = currentData.status;
+
     const updateData: any = {
       status,
       updatedAt: serverTimestamp()
     };
-    
+
     if (status === 'called') {
       updateData.calledAt = serverTimestamp();
     } else if (status === 'completed') {
       updateData.completedAt = serverTimestamp();
       // Calculate actual wait time
-      const queueDoc = await getDocs(query(collection(db, 'queue_entries'), where('__name__', '==', queueId)));
-      if (!queueDoc.empty) {
-        const queueData = queueDoc.docs[0].data();
-        const createdAt = queueData.createdAt?.toDate();
-        const completedAt = new Date();
-        if (createdAt) {
-          updateData.actualWaitTime = Math.round((completedAt.getTime() - createdAt.getTime()) / (1000 * 60));
-        }
+      const createdAt = currentData.createdAt?.toDate();
+      const completedAt = new Date();
+      if (createdAt) {
+        updateData.actualWaitTime = Math.round((completedAt.getTime() - createdAt.getTime()) / (1000 * 60));
       }
     }
-    
+
     if (notes) {
       updateData.notes = notes;
     }
-    
+
     await updateDoc(doc(db, 'queue_entries', queueId), updateData);
+
+    // Send notification if status changed
+    if (previousStatus !== status) {
+      try {
+        await sendQueueNotification({
+          patientId: currentData.patientId,
+          patientName: currentData.patientName,
+          hospitalName: currentData.hospitalName,
+          department: currentData.department,
+          queueNumber: currentData.queueNumber,
+          status,
+          estimatedWaitTime: currentData.estimatedWaitTime,
+          message: `Your queue status has been updated to ${status}`
+        });
+      } catch (notificationError) {
+        console.error('Error sending notification:', notificationError);
+        // Don't throw error to avoid breaking queue operations
+      }
+    }
   } catch (error) {
     console.error('Error updating queue status:', error);
     throw new Error('Failed to update queue status');
