@@ -276,21 +276,29 @@ const PatientPortal = () => {
 
           <TabsContent value="hospitals">
             <Card>
-          <CardHeader className="mb-6">
-            <CardTitle className="flex items-center gap-4 text-3xl font-extrabold">
-              <MapPin className="w-7 h-7" />
-              Udupi Hospitals & Healthcare Centers
-            </CardTitle>
-            <p className="text-lg text-muted-foreground mt-2">
-              Select a hospital to view details, get directions, and book appointments
-            </p>
-          </CardHeader>
-    <CardContent>
-      <HospitalSelector
-        selectedHospital={selectedHospital}
-        onSelectHospital={setSelectedHospital}
-      />
-    </CardContent>
+              <CardHeader className="mb-6">
+                <CardTitle className="flex items-center gap-4 text-3xl font-extrabold">
+                  <MapPin className="w-7 h-7" />
+                  Udupi Hospitals & Healthcare Centers
+                </CardTitle>
+                <p className="text-lg text-muted-foreground mt-2">
+                  Select a hospital to view details, get directions, and book appointments
+                </p>
+                {selectedHospital && (
+                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-sm text-green-800">
+                      <strong>Selected Hospital:</strong> {selectedHospital.hospitalName || selectedHospital.name}
+                    </p>
+                    <p className="text-xs text-green-600">{selectedHospital.address}</p>
+                  </div>
+                )}
+              </CardHeader>
+              <CardContent>
+                <HospitalSelector
+                  selectedHospital={selectedHospital}
+                  onSelectHospital={setSelectedHospital}
+                />
+              </CardContent>
             </Card>
           </TabsContent>
 
@@ -301,6 +309,7 @@ const PatientPortal = () => {
                 console.log("Booking completed:", booking);
                 // Removed automatic navigation to queue status
               }}
+              onHospitalSelect={setSelectedHospital}
             />
           </TabsContent>
 

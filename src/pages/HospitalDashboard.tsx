@@ -35,6 +35,9 @@ interface Doctor {
   availableDays: string[];
   availableTime: string;
   status: 'active' | 'inactive';
+  holidays?: string[]; // Array of dates in YYYY-MM-DD format
+  hospitalId?: string;
+  hospitalName?: string;
 }
 
 interface Booking {
@@ -63,7 +66,8 @@ const HospitalDashboard: React.FC = () => {
     consultationFee: 0,
     availableDays: [],
     availableTime: '',
-    status: 'active'
+    status: 'active',
+    holidays: []
   });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -149,7 +153,8 @@ const HospitalDashboard: React.FC = () => {
         consultationFee: 0,
         availableDays: [],
         availableTime: '',
-        status: 'active'
+        status: 'active',
+        holidays: []
       });
     } catch (error) {
       console.error('Error adding doctor:', error);
@@ -423,14 +428,67 @@ const HospitalDashboard: React.FC = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="availableTime">Available Time</Label>
-                <Input
+                <Label htmlFor="availableTime">Available Time *</Label>
+                <select
                   id="availableTime"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={newDoctor.availableTime}
                   onChange={(e) => setNewDoctor(prev => ({ ...prev, availableTime: e.target.value }))}
-                  placeholder="e.g., 9:00 AM - 5:00 PM"
-                />
+                >
+                  <option value="">Select time range</option>
+                  <option value="24/7">24/7 (Emergency)</option>
+                  <option value="6:00 AM - 12:00 PM">6:00 AM - 12:00 PM</option>
+                  <option value="9:00 AM - 5:00 PM">9:00 AM - 5:00 PM</option>
+                  <option value="10:00 AM - 6:00 PM">10:00 AM - 6:00 PM</option>
+                  <option value="2:00 PM - 10:00 PM">2:00 PM - 10:00 PM</option>
+                  <option value="8:00 AM - 4:00 PM">8:00 AM - 4:00 PM</option>
+                  <option value="12:00 PM - 8:00 PM">12:00 PM - 8:00 PM</option>
+                </select>
               </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Available Days *</Label>
+              <div className="grid grid-cols-7 gap-2">
+                {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => (
+                  <label key={day} className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={newDoctor.availableDays.includes(day)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setNewDoctor(prev => ({
+                            ...prev,
+                            availableDays: [...prev.availableDays, day]
+                          }));
+                        } else {
+                          setNewDoctor(prev => ({
+                            ...prev,
+                            availableDays: prev.availableDays.filter(d => d !== day)
+                          }));
+                        }
+                      }}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm">{day.substring(0, 3)}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500">Select the days when the doctor is available</p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="holidays">Holiday Dates (Optional)</Label>
+              <Input
+                id="holidays"
+                value={newDoctor.holidays?.join(', ') || ''}
+                onChange={(e) => {
+                  const dates = e.target.value.split(',').map(date => date.trim()).filter(date => date);
+                  setNewDoctor(prev => ({ ...prev, holidays: dates }));
+                }}
+                placeholder="e.g., 2025-12-25, 2025-01-01, 2025-08-15"
+              />
+              <p className="text-xs text-gray-500">Enter holiday dates in YYYY-MM-DD format, separated by commas</p>
             </div>
           </div>
           <DialogFooter>

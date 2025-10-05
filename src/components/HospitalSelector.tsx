@@ -25,6 +25,9 @@ export const HospitalSelector = ({ selectedHospital, onSelectHospital, userLocat
   const [showMap, setShowMap] = useState(false);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Debug logging
+  console.log("HospitalSelector rendered with:", { selectedHospital, hospitals: hospitals.length, isLoading });
 
   useEffect(() => {
     // Use local hospital data for now, can be replaced with Firestore data later
