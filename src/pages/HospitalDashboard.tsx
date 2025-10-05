@@ -20,6 +20,7 @@ interface HospitalData {
   location: string;
   contactNo: string;
   availableServices: string[];
+  specialties?: string[];
   minimumPrice: number;
   timing: string;
   daysAvailable: string[];
@@ -58,6 +59,8 @@ const HospitalDashboard: React.FC = () => {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isAddDoctorOpen, setIsAddDoctorOpen] = useState(false);
+  const [isEditDoctorOpen, setIsEditDoctorOpen] = useState(false);
+  const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
   const [newDoctor, setNewDoctor] = useState<Partial<Doctor>>({
     name: '',
     specialization: '',
@@ -82,30 +85,91 @@ const HospitalDashboard: React.FC = () => {
     }
 
     const authData = JSON.parse(hospitalAuth);
-    setHospitalData({
+    console.log('🏥 Hospital auth data:', authData);
+    
+    // Set initial hospital data with available services from auth data or defaults
+    const hospitalDataToSet = {
       hospitalId: authData.hospitalId,
       hospitalName: authData.hospitalName,
       email: authData.email,
-      location: '',
-      contactNo: '',
-      availableServices: [],
-      minimumPrice: 0,
-      timing: '',
-      daysAvailable: []
-    });
+      location: authData.location || '',
+      contactNo: authData.contactNo || '',
+      availableServices: authData.availableServices || [
+        'Emergency', 'Cardiology', 'Neurology', 'Orthopedics', 
+        'Pediatrics', 'Gynecology', 'General Medicine', 'Surgery'
+      ],
+      specialties: authData.specialties || authData.availableServices || [
+        'Emergency', 'Cardiology', 'Neurology', 'Orthopedics', 
+        'Pediatrics', 'Gynecology', 'General Medicine', 'Surgery'
+      ],
+      minimumPrice: authData.minimumPrice || 500,
+      timing: authData.timing || '24/7',
+      daysAvailable: authData.daysAvailable || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    };
+    
+    console.log('🏥 Setting hospital data:', hospitalDataToSet);
+    setHospitalData(hospitalDataToSet);
 
     // Listen to doctors for this hospital
-    const doctorsQuery = query(
-      collection(db, 'doctors'),
-      where('hospitalId', '==', authData.hospitalId),
-      orderBy('name')
-    );
+    console.log('🔍 Loading doctors for hospital:', authData.hospitalId);
+    
+    // Try with orderBy first, fallback without if it fails
+    let doctorsQuery;
+    try {
+      doctorsQuery = query(
+        collection(db, 'doctors'),
+        where('hospitalId', '==', authData.hospitalId),
+        orderBy('name')
+      );
+    } catch (error) {
+      console.warn('⚠️ OrderBy query failed, trying without orderBy:', error);
+      doctorsQuery = query(
+        collection(db, 'doctors'),
+        where('hospitalId', '==', authData.hospitalId)
+      );
+    }
+    
     const unsubscribeDoctors = onSnapshot(doctorsQuery, (snapshot) => {
+      console.log('📊 Doctors query result:', {
+        size: snapshot.size,
+        hospitalId: authData.hospitalId,
+        docs: snapshot.docs.map(doc => ({
+          id: doc.id,
+          data: doc.data()
+        }))
+      });
+      
       const docs = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Doctor[];
+      
+      console.log('👨‍⚕️ Processed doctors:', docs);
       setDoctors(docs);
+    }, (error) => {
+      console.error('❌ Error loading doctors:', error);
+      
+      // Try fallback query without orderBy
+      console.log('🔄 Trying fallback query without orderBy...');
+      const fallbackQuery = query(
+        collection(db, 'doctors'),
+        where('hospitalId', '==', authData.hospitalId)
+      );
+      
+      onSnapshot(fallbackQuery, (fallbackSnapshot) => {
+        console.log('📊 Fallback query result:', {
+          size: fallbackSnapshot.size,
+          hospitalId: authData.hospitalId
+        });
+        
+        const fallbackDocs = fallbackSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Doctor[];
+        
+        console.log('👨‍⚕️ Fallback doctors:', fallbackDocs);
+        setDoctors(fallbackDocs);
+      });
     });
 
     // Listen to bookings for this hospital
@@ -164,6 +228,49 @@ const HospitalDashboard: React.FC = () => {
     }
   };
 
+  const handleEditDoctor = (doctor: Doctor) => {
+    setEditingDoctor(doctor);
+    setIsEditDoctorOpen(true);
+  };
+
+  const handleUpdateDoctor = async () => {
+    if (!editingDoctor || !newDoctor.name || !newDoctor.specialization) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const doctorRef = doc(db, 'doctors', editingDoctor.id);
+      await updateDoc(doctorRef, {
+        ...newDoctor,
+        hospitalId: hospitalData?.hospitalId,
+        hospitalName: hospitalData?.hospitalName,
+        updatedAt: new Date()
+      });
+
+      toast.success('Doctor updated successfully!');
+      setIsEditDoctorOpen(false);
+      setEditingDoctor(null);
+      setNewDoctor({
+        name: '',
+        specialization: '',
+        experience: 0,
+        qualification: '',
+        consultationFee: 0,
+        availableDays: [],
+        availableTime: '',
+        status: 'active',
+        holidays: []
+      });
+    } catch (error) {
+      console.error('Error updating doctor:', error);
+      toast.error('Failed to update doctor');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleUpdateBookingStatus = async (bookingId: string, status: string) => {
     try {
       await updateDoc(doc(db, 'bookings', bookingId), {
@@ -210,10 +317,29 @@ const HospitalDashboard: React.FC = () => {
         <div>
           <h1 className="text-3xl font-bold">Hospital Dashboard</h1>
           <p className="text-gray-600">Welcome, {hospitalData.hospitalName}</p>
+          <p className="text-sm text-gray-500">Hospital ID: {hospitalData.hospitalId} | Doctors: {doctors.length}</p>
         </div>
-        <Button onClick={handleLogout} variant="outline">
-          Logout
-        </Button>
+        <div className="flex gap-2">
+          {/* <button
+            onClick={() => {
+              console.log('🔍 Manual debug - Hospital ID:', hospitalData.hospitalId);
+              console.log('🔍 Manual debug - Doctors count:', doctors.length);
+              console.log('🔍 Manual debug - Doctors data:', doctors);
+            }}
+            className="px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600"
+          >
+            🐛 Debug
+          </button> */}
+          <button
+            onClick={() => window.location.reload()}
+            className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+          >
+            🔄 Refresh
+          </button>
+          <Button onClick={handleLogout} variant="outline">
+            Logout
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="overview" className="space-y-4">
@@ -277,24 +403,66 @@ const HospitalDashboard: React.FC = () => {
                     <TableHead>Experience</TableHead>
                     <TableHead>Qualification</TableHead>
                     <TableHead>Consultation Fee</TableHead>
+                    <TableHead>Available Time</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {doctors.map((doctor) => (
-                    <TableRow key={doctor.id}>
-                      <TableCell className="font-medium">{doctor.name}</TableCell>
-                      <TableCell>{doctor.specialization}</TableCell>
-                      <TableCell>{doctor.experience} years</TableCell>
-                      <TableCell>{doctor.qualification}</TableCell>
-                      <TableCell>₹{doctor.consultationFee}</TableCell>
-                      <TableCell>
-                        <Badge variant={doctor.status === 'active' ? 'default' : 'secondary'}>
-                          {doctor.status}
-                        </Badge>
+                  {doctors.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        No doctors found. Add your first doctor to get started.
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    doctors.map((doctor) => (
+                      <TableRow key={doctor.id}>
+                        <TableCell className="font-medium">{doctor.name}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{doctor.specialization}</Badge>
+                        </TableCell>
+                        <TableCell>{doctor.experience} years</TableCell>
+                        <TableCell>{doctor.qualification}</TableCell>
+                        <TableCell>₹{doctor.consultationFee}</TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            <div>{doctor.availableTime}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {doctor.availableDays?.length || 0} days/week
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={doctor.status === 'active' ? 'default' : 'secondary'}>
+                            {doctor.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setNewDoctor({
+                                name: doctor.name,
+                                specialization: doctor.specialization,
+                                experience: doctor.experience,
+                                qualification: doctor.qualification,
+                                consultationFee: doctor.consultationFee,
+                                availableDays: doctor.availableDays || [],
+                                availableTime: doctor.availableTime,
+                                status: doctor.status,
+                                holidays: doctor.holidays || []
+                              });
+                              handleEditDoctor(doctor);
+                            }}
+                          >
+                            Edit
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -387,12 +555,40 @@ const HospitalDashboard: React.FC = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="specialization">Specialization *</Label>
-                <Input
+                <select
                   id="specialization"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={newDoctor.specialization}
                   onChange={(e) => setNewDoctor(prev => ({ ...prev, specialization: e.target.value }))}
-                  placeholder="Specialization"
-                />
+                >
+                  <option value="">Select specialization</option>
+                  {/* Show hospital's available services first */}
+                  {hospitalData?.availableServices?.map((service) => (
+                    <option key={service} value={service}>
+                      {service}
+                    </option>
+                  ))}
+                  {/* Show hospital's specialties that aren't already in availableServices */}
+                  {hospitalData?.specialties?.filter(specialty => 
+                    !hospitalData?.availableServices?.includes(specialty)
+                  ).map((specialty) => (
+                    <option key={specialty} value={specialty}>
+                      {specialty}
+                    </option>
+                  ))}
+                  {/* Fallback common specializations if hospital data is incomplete */}
+                  {(!hospitalData?.availableServices?.length && !hospitalData?.specialties?.length) && [
+                    "Emergency", "Cardiology", "Neurology", "Orthopedics", "Pediatrics", 
+                    "Gynecology", "General Medicine", "Dermatology", "Ophthalmology", "ENT"
+                  ].map((specialty) => (
+                    <option key={specialty} value={specialty}>
+                      {specialty}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500">
+                  Only services provided by your hospital are available
+                </p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -503,6 +699,162 @@ const HospitalDashboard: React.FC = () => {
               disabled={isLoading}
             >
               {isLoading ? 'Adding...' : 'Add Doctor'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Doctor Dialog */}
+      <Dialog open={isEditDoctorOpen} onOpenChange={setIsEditDoctorOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Doctor</DialogTitle>
+            <DialogDescription>
+              Update doctor information
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="editName">Name *</Label>
+                <Input
+                  id="editName"
+                  value={newDoctor.name}
+                  onChange={(e) => setNewDoctor(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Doctor name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editSpecialization">Specialization *</Label>
+                <select
+                  id="editSpecialization"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={newDoctor.specialization}
+                  onChange={(e) => setNewDoctor(prev => ({ ...prev, specialization: e.target.value }))}
+                >
+                  <option value="">Select specialization</option>
+                  {hospitalData?.availableServices?.map((service) => (
+                    <option key={service} value={service}>
+                      {service}
+                    </option>
+                  ))}
+                  {hospitalData?.specialties?.filter(specialty => 
+                    !hospitalData?.availableServices?.includes(specialty)
+                  ).map((specialty) => (
+                    <option key={specialty} value={specialty}>
+                      {specialty}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="editExperience">Experience (years)</Label>
+                <Input
+                  id="editExperience"
+                  type="number"
+                  value={newDoctor.experience}
+                  onChange={(e) => setNewDoctor(prev => ({ ...prev, experience: parseInt(e.target.value) || 0 }))}
+                  placeholder="Years of experience"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editQualification">Qualification</Label>
+                <Input
+                  id="editQualification"
+                  value={newDoctor.qualification}
+                  onChange={(e) => setNewDoctor(prev => ({ ...prev, qualification: e.target.value }))}
+                  placeholder="MBBS, MD, etc."
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="editConsultationFee">Consultation Fee (₹)</Label>
+                <Input
+                  id="editConsultationFee"
+                  type="number"
+                  value={newDoctor.consultationFee}
+                  onChange={(e) => setNewDoctor(prev => ({ ...prev, consultationFee: parseInt(e.target.value) || 0 }))}
+                  placeholder="Consultation fee"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editAvailableTime">Available Time *</Label>
+                <select
+                  id="editAvailableTime"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={newDoctor.availableTime}
+                  onChange={(e) => setNewDoctor(prev => ({ ...prev, availableTime: e.target.value }))}
+                >
+                  <option value="">Select time range</option>
+                  <option value="24/7">24/7 (Emergency)</option>
+                  <option value="6:00 AM - 12:00 PM">6:00 AM - 12:00 PM</option>
+                  <option value="9:00 AM - 5:00 PM">9:00 AM - 5:00 PM</option>
+                  <option value="10:00 AM - 6:00 PM">10:00 AM - 6:00 PM</option>
+                  <option value="2:00 PM - 10:00 PM">2:00 PM - 10:00 PM</option>
+                  <option value="8:00 AM - 4:00 PM">8:00 AM - 4:00 PM</option>
+                  <option value="12:00 PM - 8:00 PM">12:00 PM - 8:00 PM</option>
+                </select>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Available Days *</Label>
+              <div className="grid grid-cols-7 gap-2">
+                {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => (
+                  <label key={day} className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={newDoctor.availableDays?.includes(day) || false}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setNewDoctor(prev => ({
+                            ...prev,
+                            availableDays: [...(prev.availableDays || []), day]
+                          }));
+                        } else {
+                          setNewDoctor(prev => ({
+                            ...prev,
+                            availableDays: (prev.availableDays || []).filter(d => d !== day)
+                          }));
+                        }
+                      }}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm">{day.substring(0, 3)}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="editHolidays">Holiday Dates (Optional)</Label>
+              <Input
+                id="editHolidays"
+                value={newDoctor.holidays?.join(', ') || ''}
+                onChange={(e) => {
+                  const dates = e.target.value.split(',').map(date => date.trim()).filter(date => date);
+                  setNewDoctor(prev => ({ ...prev, holidays: dates }));
+                }}
+                placeholder="e.g., 2025-12-25, 2025-01-01, 2025-08-15"
+              />
+              <p className="text-xs text-gray-500">Enter holiday dates in YYYY-MM-DD format, separated by commas</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsEditDoctorOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdateDoctor}
+              disabled={isLoading}
+            >
+              {isLoading ? 'Updating...' : 'Update Doctor'}
             </Button>
           </DialogFooter>
         </DialogContent>
