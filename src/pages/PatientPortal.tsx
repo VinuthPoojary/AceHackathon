@@ -1,25 +1,32 @@
 import { useState, useEffect } from "react";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Clock, User, Calendar, CheckCircle, AlertCircle, Lock } from "lucide-react";
+import { Clock, User, Calendar, CheckCircle, AlertCircle, Lock, MapPin, Heart, Phone, Bell } from "lucide-react";
 import { DepartmentSelector } from "@/components/DepartmentSelector";
 import { QueuePosition } from "@/components/QueuePosition";
+import { HospitalSelector } from "@/components/HospitalSelector";
+import { EnhancedPatientProfile } from "@/components/EnhancedPatientProfile";
+import { SOSEmergency } from "@/components/SOSEmergency";
+import { EnhancedBookingFlow } from "@/components/EnhancedBookingFlow";
 import PatientDashboard from "./PatientDashboard";
 import { useAuth } from "@/contexts/AuthProvider";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, addDoc, collection } from "firebase/firestore";
 
 const PatientPortal = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, isPatientLoggedIn } = useAuth();
   const [profile, setProfile] = useState<any>(null);
+  const [selectedHospital, setSelectedHospital] = useState<any>(null);
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [appointmentType, setAppointmentType] = useState("Walk-in");
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [queuePosition, setQueuePosition] = useState(12);
   const [estimatedWait, setEstimatedWait] = useState(35);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [activeTab, setActiveTab] = useState("profile");
+
 
   useEffect(() => {
     if (currentUser) {
@@ -118,30 +125,99 @@ const PatientPortal = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-accent/20 to-background">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
+        {/* Modern Header */}
         <div className="mb-8 text-center">
-          <h1 className="text-4xl font-bold text-foreground mb-2">Patient Portal</h1>
-          <p className="text-muted-foreground">Virtual check-in and queue management</p>
+          <div className="inline-flex items-center gap-3 mb-4">
+            <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-green-600 rounded-full flex items-center justify-center">
+              <Heart className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                MedConnect Udupi
+              </h1>
+              <p className="text-muted-foreground">Your comprehensive healthcare companion</p>
+            </div>
+          </div>
         </div>
 
-        <Tabs defaultValue="profile" className="max-w-4xl mx-auto">
-          <TabsList className="mb-6">
+        {/* Quick Actions */}
+        <div className="grid md:grid-cols-4 gap-4 mb-8">
+          <Card className="p-4 text-center hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setActiveTab("sos")}>
+            <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-2" />
+            <h3 className="font-medium">SOS Emergency</h3>
+            <p className="text-sm text-muted-foreground">24/7 Emergency</p>
+          </Card>
+          <Card className="p-4 text-center hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setActiveTab("hospitals")}>
+            <MapPin className="w-8 h-8 text-blue-500 mx-auto mb-2" />
+            <h3 className="font-medium">Find Hospitals</h3>
+            <p className="text-sm text-muted-foreground">Nearby Care</p>
+          </Card>
+          <Card className="p-4 text-center hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setActiveTab("booking")}>
+            <Calendar className="w-8 h-8 text-green-500 mx-auto mb-2" />
+            <h3 className="font-medium">Book Appointment</h3>
+            <p className="text-sm text-muted-foreground">Easy Scheduling</p>
+          </Card>
+          <Card className="p-4 text-center hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setActiveTab("profile")}>
+            <User className="w-8 h-8 text-purple-500 mx-auto mb-2" />
+            <h3 className="font-medium">My Profile</h3>
+            <p className="text-sm text-muted-foreground">Health Records</p>
+          </Card>
+        </div>
+
+        {/* Main Content */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="max-w-6xl mx-auto">
+          <TabsList className="grid w-full grid-cols-5 mb-8">
             <TabsTrigger value="profile">Profile</TabsTrigger>
-            <TabsTrigger value="checkin" disabled={!isProfileComplete()}>
-              Check-In { !isProfileComplete() && <Lock className="inline ml-1 h-4 w-4" /> }
-            </TabsTrigger>
+            <TabsTrigger value="sos">SOS Emergency</TabsTrigger>
+            <TabsTrigger value="hospitals">Hospitals</TabsTrigger>
+            <TabsTrigger value="booking">Booking</TabsTrigger>
+            <TabsTrigger value="queue">Queue Status</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile">
-            <PatientDashboard />
+            <EnhancedPatientProfile />
           </TabsContent>
 
-          <TabsContent value="checkin">
+          <TabsContent value="sos">
+            <SOSEmergency />
+          </TabsContent>
+
+          <TabsContent value="hospitals">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="w-5 h-5" />
+                  Udupi Hospitals & Healthcare Centers
+                </CardTitle>
+                <p className="text-muted-foreground">
+                  Select a hospital to view details, get directions, and book appointments
+                </p>
+              </CardHeader>
+              <CardContent>
+                <HospitalSelector
+                  selectedHospital={selectedHospital}
+                  onSelectHospital={setSelectedHospital}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="booking">
+            <EnhancedBookingFlow
+              selectedHospital={selectedHospital}
+              onBookingComplete={(booking) => {
+                console.log("Booking completed:", booking);
+                setActiveTab("queue");
+              }}
+            />
+          </TabsContent>
+
+          <TabsContent value="queue">
             {!isCheckedIn ? (
               <Card className="p-6 shadow-elevated max-w-2xl mx-auto">
-                <h2 className="text-2xl font-semibold mb-6">Virtual Check-In</h2>
+                <h2 className="text-2xl font-semibold mb-6 text-center">Virtual Check-In</h2>
 
                 <div className="space-y-6">
                   <div>
@@ -189,7 +265,7 @@ const PatientPortal = () => {
 
                   <Button
                     onClick={handleCheckIn}
-                    className="w-full bg-gradient-primary text-primary-foreground hover:opacity-90"
+                    className="w-full bg-gradient-to-r from-blue-600 to-green-600 text-white hover:opacity-90"
                     size="lg"
                     disabled={!selectedDepartment || paymentProcessing}
                   >

@@ -22,7 +22,56 @@ declare global {
   }
 }
 
-// Helper functions for cookie management
+// Helper functions for authentication persistence
+const setAuthData = (userData: { email: string; uid: string; role: string }) => {
+  localStorage.setItem('medconnect_auth', JSON.stringify({
+    ...userData,
+    timestamp: Date.now()
+  }));
+  
+  // Also set cookies as backup
+  const expires = new Date();
+  expires.setTime(expires.getTime() + 7 * 24 * 60 * 60 * 1000);
+  document.cookie = `userEmail=${userData.email};expires=${expires.toUTCString()};path=/`;
+  document.cookie = `userUid=${userData.uid};expires=${expires.toUTCString()};path=/`;
+  document.cookie = `userRole=${userData.role};expires=${expires.toUTCString()};path=/`;
+};
+
+const getAuthData = (): { email: string; uid: string; role: string } | null => {
+  try {
+    const authData = localStorage.getItem('medconnect_auth');
+    if (authData) {
+      const parsed = JSON.parse(authData);
+      // Check if data is not older than 7 days
+      if (Date.now() - parsed.timestamp < 7 * 24 * 60 * 60 * 1000) {
+        return parsed;
+      }
+    }
+    
+    // Fallback to cookies
+    const email = getCookie('userEmail');
+    const uid = getCookie('userUid');
+    const role = getCookie('userRole');
+    
+    if (email && uid && role) {
+      return { email, uid, role };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting auth data:', error);
+    return null;
+  }
+};
+
+const clearAuthData = () => {
+  localStorage.removeItem('medconnect_auth');
+  eraseCookie('userEmail');
+  eraseCookie('userUid');
+  eraseCookie('userRole');
+};
+
+// Helper functions for cookie management (backup)
 const setCookie = (name: string, value: string, days: number = 7) => {
   const expires = new Date();
   expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
@@ -48,6 +97,7 @@ interface AuthContextType {
   currentUser: User | null;
   isPatientLoggedIn: boolean;
   isStaffLoggedIn: boolean;
+  isLoading: boolean;
   loginPatient: (identifier: string, password: string) => Promise<void>;
   loginStaff: (email: string, password: string, staffId: string) => Promise<void>;
   registerPatient: (data: { email?: string; phone?: string; password: string; name: string }) => Promise<void>;
@@ -76,40 +126,80 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isPatientLoggedIn, setIsPatientLoggedIn] = useState(false);
   const [isStaffLoggedIn, setIsStaffLoggedIn] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const validStaffIds = ['STAFF001', 'STAFF002', 'STAFF003']; // Predefined staff IDs
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
+      setIsLoading(true);
+      
       if (user) {
-        // Check if user is patient or staff by checking Firestore
+        // Check localStorage first for faster authentication
+        const authData = getAuthData();
+        
+        if (authData && authData.uid === user.uid) {
+          if (authData.role === 'patient') {
+            setIsPatientLoggedIn(true);
+            setIsStaffLoggedIn(false);
+            setIsLoading(false);
+            return;
+          } else if (authData.role === 'staff') {
+            setIsStaffLoggedIn(true);
+            setIsPatientLoggedIn(false);
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        // If no valid auth data, check Firestore
         try {
           const patientDoc = await getDoc(doc(db, 'patients', user.uid));
           if (patientDoc.exists()) {
             setIsPatientLoggedIn(true);
             setIsStaffLoggedIn(false);
+            setAuthData({
+              email: user.email || '',
+              uid: user.uid,
+              role: 'patient'
+            });
+            setIsLoading(false);
             return;
           }
         } catch (error) {
           console.error('Error checking patient document:', error);
         }
+        
         try {
           const staffDoc = await getDoc(doc(db, 'staff', user.uid));
           if (staffDoc.exists()) {
             setIsStaffLoggedIn(true);
             setIsPatientLoggedIn(false);
+            setAuthData({
+              email: user.email || '',
+              uid: user.uid,
+              role: 'staff'
+            });
+            setIsLoading(false);
             return;
           }
         } catch (error) {
           console.error('Error checking staff document:', error);
         }
+        
+        // If user exists but no role found, clear auth data
+        clearAuthData();
         setIsPatientLoggedIn(false);
         setIsStaffLoggedIn(false);
       } else {
+        // Clear auth data when user is null
+        clearAuthData();
         setIsPatientLoggedIn(false);
         setIsStaffLoggedIn(false);
       }
+      
+      setIsLoading(false);
     });
     return unsubscribe;
   }, []);
@@ -141,10 +231,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       toast.error('No patient record found for this user.');
       throw new Error('No patient record found for this user.');
     }
-    // Store user details in cookies
-    setCookie('userEmail', user.email || '');
-    setCookie('userUid', user.uid);
-    setCookie('userRole', 'patient');
+    // Store user details in localStorage and cookies
+    setAuthData({
+      email: user.email || '',
+      uid: user.uid,
+      role: 'patient'
+    });
     toast.success('Patient logged in successfully.');
   };
 
@@ -164,10 +256,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await signOut(auth);
       throw new Error('Staff ID does not match.');
     }
-    // Store user details in cookies
-    setCookie('userEmail', user.email || '');
-    setCookie('userUid', user.uid);
-    setCookie('userRole', 'staff');
+    // Store user details in localStorage and cookies
+    setAuthData({
+      email: user.email || '',
+      uid: user.uid,
+      role: 'staff'
+    });
     toast.success('Staff logged in successfully.');
   };
 
@@ -232,10 +326,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const logout = async () => {
     await signOut(auth);
-    // Clear user details from cookies
-    eraseCookie('userEmail');
-    eraseCookie('userUid');
-    eraseCookie('userRole');
+    // Clear user details from localStorage and cookies
+    clearAuthData();
     toast.info('Logged out successfully.');
   };
 
@@ -254,10 +346,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         toast.error('No patient record found for this phone number.');
         throw new Error('No patient record found for this phone number.');
       }
-      // Store user details in cookies
-      setCookie('userEmail', user.phoneNumber || '');
-      setCookie('userUid', user.uid);
-      setCookie('userRole', 'patient');
+      // Store user details in localStorage and cookies
+      setAuthData({
+        email: user.phoneNumber || '',
+        uid: user.uid,
+        role: 'patient'
+      });
       toast.success('Patient logged in successfully with phone.');
     } catch (error: any) {
       toast.error('Invalid OTP: ' + error.message);
@@ -280,6 +374,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       currentUser,
       isPatientLoggedIn,
       isStaffLoggedIn,
+      isLoading,
       loginPatient,
       loginStaff,
       registerPatient,

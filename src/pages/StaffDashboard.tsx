@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Users,
   Clock,
@@ -13,24 +15,41 @@ import {
   ArrowRight,
   LogOut,
   UserCheck,
+  Calendar,
+  DollarSign,
+  Phone,
+  Mail,
+  MapPin,
+  Search,
+  Filter,
+  Eye,
+  Edit,
+  Trash2,
+  Plus,
+  RefreshCw
 } from "lucide-react";
 import { QueueManagement } from "@/components/QueueManagement";
 import { AnalyticsChart } from "@/components/AnalyticsChart";
 import { useAuth } from "@/contexts/AuthProvider";
 import { useNavigate } from "react-router-dom";
 import { db } from "@/lib/firebase";
-import { collection, query, orderBy, limit, onSnapshot } from "firebase/firestore";
+import { collection, query, orderBy, limit, onSnapshot, where, updateDoc, doc } from "firebase/firestore";
 
 const StaffDashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const { logout } = useAuth();
   const navigate = useNavigate();
   const [recentCheckins, setRecentCheckins] = useState<any[]>([]);
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [departmentFilter, setDepartmentFilter] = useState("all");
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     // Listen for recent check-ins
-    const q = query(collection(db, "checkins"), orderBy("checkedInAt", "desc"), limit(10));
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const checkinsQuery = query(collection(db, "checkins"), orderBy("checkedInAt", "desc"), limit(10));
+    const checkinsUnsubscribe = onSnapshot(checkinsQuery, (querySnapshot) => {
       const checkins = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -38,7 +57,20 @@ const StaffDashboard = () => {
       setRecentCheckins(checkins);
     });
 
-    return () => unsubscribe();
+    // Listen for appointments
+    const appointmentsQuery = query(collection(db, "bookings"), orderBy("bookingDate", "desc"));
+    const appointmentsUnsubscribe = onSnapshot(appointmentsQuery, (querySnapshot) => {
+      const appointments = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setAppointments(appointments);
+    });
+
+    return () => {
+      checkinsUnsubscribe();
+      appointmentsUnsubscribe();
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -49,6 +81,51 @@ const StaffDashboard = () => {
       console.error('Logout failed:', error);
     }
   };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    // Simulate refresh delay
+    setTimeout(() => {
+      setIsRefreshing(false);
+    }, 1000);
+  };
+
+  const updateAppointmentStatus = async (appointmentId: string, newStatus: string) => {
+    try {
+      const appointmentRef = doc(db, "bookings", appointmentId);
+      await updateDoc(appointmentRef, {
+        status: newStatus,
+        updatedAt: new Date()
+      });
+    } catch (error) {
+      console.error("Error updating appointment:", error);
+    }
+  };
+
+  const getAppointmentStatusColor = (status: string) => {
+    switch (status) {
+      case "confirmed":
+        return "bg-green-100 text-green-800";
+      case "completed":
+        return "bg-blue-100 text-blue-800";
+      case "cancelled":
+        return "bg-red-100 text-red-800";
+      case "pending":
+        return "bg-yellow-100 text-yellow-800";
+      default:
+        return "bg-gray-100 text-gray-800";
+    }
+  };
+
+  const filteredAppointments = appointments.filter(appointment => {
+    const matchesSearch = appointment.patientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         appointment.doctor?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         appointment.bookingId?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === "all" || appointment.status === statusFilter;
+    const matchesDepartment = departmentFilter === "all" || appointment.department === departmentFilter;
+    
+    return matchesSearch && matchesStatus && matchesDepartment;
+  });
 
   const departments = [
     { name: "Emergency", patients: 18, avgWait: 45, status: "high" },
@@ -141,8 +218,9 @@ const StaffDashboard = () => {
 
         {/* Main Content Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-3 mx-auto">
+          <TabsList className="grid w-full max-w-2xl grid-cols-4 mx-auto">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="appointments">Appointments</TabsTrigger>
             <TabsTrigger value="queue">Queue</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
           </TabsList>
@@ -244,6 +322,144 @@ const StaffDashboard = () => {
                 <p className="text-sm text-muted-foreground">View patient flow</p>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="appointments" className="space-y-6">
+            {/* Appointments Management Header */}
+            <Card className="p-6 shadow-elevated">
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h2 className="text-2xl font-semibold flex items-center">
+                    <Calendar className="mr-2 h-6 w-6 text-primary" />
+                    Appointment Management
+                  </h2>
+                  <p className="text-muted-foreground">Manage all patient appointments and bookings</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={handleRefresh} disabled={isRefreshing}>
+                    <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                  <Button>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Appointment
+                  </Button>
+                </div>
+              </div>
+
+              {/* Filters */}
+              <div className="grid md:grid-cols-4 gap-4 mb-6">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                  <Input
+                    placeholder="Search appointments..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="confirmed">Confirmed</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Departments</SelectItem>
+                    <SelectItem value="emergency">Emergency</SelectItem>
+                    <SelectItem value="cardiology">Cardiology</SelectItem>
+                    <SelectItem value="neurology">Neurology</SelectItem>
+                    <SelectItem value="orthopedics">Orthopedics</SelectItem>
+                    <SelectItem value="pediatrics">Pediatrics</SelectItem>
+                    <SelectItem value="gynecology">Gynecology</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="text-sm text-muted-foreground flex items-center">
+                  <Filter className="w-4 h-4 mr-2" />
+                  {filteredAppointments.length} appointments
+                </div>
+              </div>
+
+              {/* Appointments List */}
+              <div className="space-y-4">
+                {filteredAppointments.length > 0 ? (
+                  filteredAppointments.map((appointment) => (
+                    <Card key={appointment.id} className="p-4">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="font-semibold text-lg">{appointment.patientName}</h3>
+                            <Badge className={getAppointmentStatusColor(appointment.status)}>
+                              {appointment.status}
+                            </Badge>
+                          </div>
+                          <div className="grid md:grid-cols-2 gap-4 text-sm text-muted-foreground">
+                            <div>
+                              <p><strong>Booking ID:</strong> {appointment.bookingId}</p>
+                              <p><strong>Hospital:</strong> {appointment.hospital?.name}</p>
+                              <p><strong>Doctor:</strong> {appointment.doctor?.name}</p>
+                              <p><strong>Department:</strong> {appointment.department}</p>
+                            </div>
+                            <div>
+                              <p><strong>Date:</strong> {new Date(appointment.preferredDate?.seconds * 1000).toLocaleDateString()}</p>
+                              <p><strong>Time:</strong> {appointment.preferredTime}</p>
+                              <p><strong>Type:</strong> {appointment.appointmentType}</p>
+                              <p><strong>Amount:</strong> ₹{appointment.totalPrice}</p>
+                            </div>
+                          </div>
+                          {appointment.reason && (
+                            <div className="mt-2">
+                              <p className="text-sm"><strong>Reason:</strong> {appointment.reason}</p>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-2 ml-4">
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => updateAppointmentStatus(appointment.id, "completed")}
+                              disabled={appointment.status === "completed"}
+                            >
+                              <CheckCircle className="w-4 h-4 mr-1" />
+                              Complete
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => updateAppointmentStatus(appointment.id, "cancelled")}
+                              disabled={appointment.status === "cancelled"}
+                            >
+                              <Trash2 className="w-4 h-4 mr-1" />
+                              Cancel
+                            </Button>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(appointment.bookingDate?.seconds * 1000).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  ))
+                ) : (
+                  <div className="text-center py-8">
+                    <Calendar className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                    <h3 className="text-lg font-medium mb-2">No appointments found</h3>
+                    <p className="text-muted-foreground">Try adjusting your search criteria</p>
+                  </div>
+                )}
+              </div>
+            </Card>
           </TabsContent>
 
           <TabsContent value="queue">
