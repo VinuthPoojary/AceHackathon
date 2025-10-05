@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,16 +12,34 @@ import {
   Activity,
   ArrowRight,
   LogOut,
+  UserCheck,
 } from "lucide-react";
 import { QueueManagement } from "@/components/QueueManagement";
 import { AnalyticsChart } from "@/components/AnalyticsChart";
 import { useAuth } from "@/contexts/AuthProvider";
 import { useNavigate } from "react-router-dom";
+import { db } from "@/lib/firebase";
+import { collection, query, orderBy, limit, onSnapshot } from "firebase/firestore";
 
 const StaffDashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const { logout } = useAuth();
   const navigate = useNavigate();
+  const [recentCheckins, setRecentCheckins] = useState<any[]>([]);
+
+  useEffect(() => {
+    // Listen for recent check-ins
+    const q = query(collection(db, "checkins"), orderBy("checkedInAt", "desc"), limit(10));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const checkins = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setRecentCheckins(checkins);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -165,6 +183,44 @@ const StaffDashboard = () => {
                     </Button>
                   </div>
                 ))}
+              </div>
+            </Card>
+
+            {/* Recent Check-ins */}
+            <Card className="p-6 shadow-elevated">
+              <h2 className="text-2xl font-semibold mb-4 flex items-center">
+                <UserCheck className="mr-2 h-6 w-6 text-primary" />
+                Recent Check-ins
+              </h2>
+              <div className="space-y-3">
+                {recentCheckins.length > 0 ? (
+                  recentCheckins.map((checkin) => (
+                    <div
+                      key={checkin.id}
+                      className="flex items-center justify-between p-3 bg-accent/30 rounded-lg"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                          <UserCheck className="h-4 w-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium">{checkin.patientName}</p>
+                          <p className="text-sm text-muted-foreground">
+                            ID: {checkin.patientId} • {checkin.department} • {checkin.appointmentType}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <Badge variant="outline">₹{checkin.price}</Badge>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {new Date(checkin.checkedInAt.seconds * 1000).toLocaleTimeString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-muted-foreground text-center py-4">No recent check-ins</p>
+                )}
               </div>
             </Card>
 

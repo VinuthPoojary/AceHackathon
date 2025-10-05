@@ -1,30 +1,54 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ArrowUp, ArrowDown, CheckCircle, X, Search, Filter } from "lucide-react";
+import { db } from "@/lib/firebase";
+import { collection, query, orderBy, onSnapshot, doc, updateDoc } from "firebase/firestore";
 
 export const QueueManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [patients, setPatients] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const patients = [
-    { id: "P001", name: "John Doe", department: "Cardiology", priority: "High", waitTime: 45, status: "Waiting" },
-    { id: "P002", name: "Sarah Smith", department: "Emergency", priority: "Urgent", waitTime: 5, status: "In Progress" },
-    { id: "P003", name: "Mike Johnson", department: "Orthopedics", priority: "Medium", waitTime: 30, status: "Waiting" },
-    { id: "P004", name: "Emma Wilson", department: "Pediatrics", priority: "Low", waitTime: 20, status: "Waiting" },
-    { id: "P005", name: "David Brown", department: "Cardiology", priority: "Medium", waitTime: 35, status: "Waiting" },
-  ];
+  useEffect(() => {
+    // Listen for check-ins
+    const q = query(collection(db, "checkins"), orderBy("checkedInAt", "asc"));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const checkins = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setPatients(checkins);
+      setLoading(false);
+    });
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "Urgent":
+    return () => unsubscribe();
+  }, []);
+
+  const updatePatientStatus = async (patientId: string, newStatus: string) => {
+    try {
+      const patientRef = doc(db, "checkins", patientId);
+      await updateDoc(patientRef, {
+        status: newStatus,
+        ...(newStatus === "completed" && { completedAt: new Date() }),
+        ...(newStatus === "cancelled" && { cancelledAt: new Date() }),
+      });
+    } catch (error) {
+      console.error("Error updating patient status:", error);
+    }
+  };
+
+  const getPriorityColor = (appointmentType: string) => {
+    switch (appointmentType) {
+      case "Emergency":
         return "bg-destructive text-destructive-foreground";
-      case "High":
+      case "Scheduled Appointment":
         return "bg-warning text-warning-foreground";
-      case "Medium":
+      case "Follow-up":
         return "bg-primary text-primary-foreground";
-      case "Low":
+      case "Walk-in":
         return "bg-secondary text-secondary-foreground";
       default:
         return "bg-muted";
@@ -32,10 +56,25 @@ export const QueueManagement = () => {
   };
 
   const getStatusColor = (status: string) => {
-    return status === "In Progress"
-      ? "bg-primary text-primary-foreground"
-      : "bg-muted text-muted-foreground";
+    switch (status) {
+      case "waiting":
+        return "bg-muted text-muted-foreground";
+      case "in-progress":
+        return "bg-primary text-primary-foreground";
+      case "completed":
+        return "bg-secondary text-secondary-foreground";
+      case "cancelled":
+        return "bg-destructive text-destructive-foreground";
+      default:
+        return "bg-muted";
+    }
   };
+
+  const filteredPatients = patients.filter(patient =>
+    patient.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    patient.patientId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    patient.department.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <Card className="p-6 shadow-elevated">
@@ -72,17 +111,17 @@ export const QueueManagement = () => {
               </tr>
             </thead>
             <tbody>
-              {patients.map((patient) => (
+              {filteredPatients.map((patient) => (
                 <tr key={patient.id} className="border-b hover:bg-accent/50 transition-colors">
-                  <td className="py-4 px-4 font-medium">{patient.id}</td>
-                  <td className="py-4 px-4">{patient.name}</td>
+                  <td className="py-4 px-4 font-medium">{patient.patientId}</td>
+                  <td className="py-4 px-4">{patient.patientName}</td>
                   <td className="py-4 px-4 text-muted-foreground">{patient.department}</td>
                   <td className="py-4 px-4">
-                    <Badge className={getPriorityColor(patient.priority)}>
-                      {patient.priority}
+                    <Badge className={getPriorityColor(patient.appointmentType)}>
+                      {patient.appointmentType}
                     </Badge>
                   </td>
-                  <td className="py-4 px-4 text-muted-foreground">{patient.waitTime} min</td>
+                  <td className="py-4 px-4 text-muted-foreground">{patient.estimatedWait} min</td>
                   <td className="py-4 px-4">
                     <Badge className={getStatusColor(patient.status)}>
                       {patient.status}
@@ -96,10 +135,22 @@ export const QueueManagement = () => {
                       <Button size="sm" variant="ghost" title="Move down">
                         <ArrowDown className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost" className="text-secondary" title="Complete">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-secondary"
+                        title="Complete"
+                        onClick={() => updatePatientStatus(patient.id, "completed")}
+                      >
                         <CheckCircle className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost" className="text-destructive" title="Cancel">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive"
+                        title="Cancel"
+                        onClick={() => updatePatientStatus(patient.id, "cancelled")}
+                      >
                         <X className="h-4 w-4" />
                       </Button>
                     </div>

@@ -1,14 +1,26 @@
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { auth, db } from '@/lib/firebase';
+import type { Auth } from 'firebase/auth';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
   User,
   onAuthStateChanged,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  ConfirmationResult,
+  sendPasswordResetEmail,
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { toast } from '@/components/ui/sonner';
+
+declare global {
+  interface Window {
+    recaptchaVerifier: RecaptchaVerifier;
+  }
+}
 
 // Helper functions for cookie management
 const setCookie = (name: string, value: string, days: number = 7) => {
@@ -36,11 +48,14 @@ interface AuthContextType {
   currentUser: User | null;
   isPatientLoggedIn: boolean;
   isStaffLoggedIn: boolean;
-  loginPatient: (email: string, password: string) => Promise<void>;
+  loginPatient: (identifier: string, password: string) => Promise<void>;
   loginStaff: (email: string, password: string, staffId: string) => Promise<void>;
-  registerPatient: (email: string, password: string, name: string) => Promise<void>;
+  registerPatient: (data: { email?: string; phone?: string; password: string; name: string }) => Promise<void>;
   registerStaff: (email: string, password: string, name: string, staffId: string) => Promise<void>;
   logout: () => Promise<void>;
+  sendPatientOTP: (phoneNumber: string) => Promise<ConfirmationResult>;
+  verifyPatientOTP: (confirmationResult: ConfirmationResult, otp: string) => Promise<void>;
+  forgotPassword: (email: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -99,8 +114,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return unsubscribe;
   }, []);
 
-  const loginPatient = async (email: string, password: string) => {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+  useEffect(() => {
+    if (!window.recaptchaVerifier) {
+      window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+        size: 'invisible',
+      });
+    }
+  }, []);
+
+  const loginPatient = async (identifier: string, password: string) => {
+    // identifier can be email or phone number
+    let userCredential;
+    if (identifier.includes('@')) {
+      // email login
+      userCredential = await signInWithEmailAndPassword(auth, identifier, password);
+    } else {
+      // phone login with phone number and password (custom logic)
+      // For simplicity, assume phone number is stored as email in Firebase with domain '@phone.local'
+      const fakeEmail = `${identifier}@phone.local`;
+      userCredential = await signInWithEmailAndPassword(auth, fakeEmail, password);
+    }
     const user = userCredential.user;
     const patientDoc = await getDoc(doc(db, 'patients', user.uid));
     if (!patientDoc.exists()) {
@@ -138,13 +171,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     toast.success('Staff logged in successfully.');
   };
 
-  const registerPatient = async (email: string, password: string, name: string) => {
+  const registerPatient = async (data: { email?: string; phone?: string; password: string; name: string }) => {
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      let userCredential;
+      if (data.email) {
+        userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+      } else if (data.phone) {
+        // For phone registration, create a fake email to use Firebase email/password auth
+        const fakeEmail = `${data.phone}@phone.local`;
+        userCredential = await createUserWithEmailAndPassword(auth, fakeEmail, data.password);
+      } else {
+        throw new Error('Email or phone number is required for registration.');
+      }
       const user = userCredential.user;
       await setDoc(doc(db, 'patients', user.uid), {
-        name,
-        email,
+        name: data.name,
+        email: data.email || null,
+        phone: data.phone || null,
         createdAt: new Date(),
       });
       toast.success('Patient registered successfully.');
@@ -196,6 +239,42 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     toast.info('Logged out successfully.');
   };
 
+  const sendPatientOTP = async (phoneNumber: string): Promise<ConfirmationResult> => {
+    // Since login with phone number uses password, no need to send OTP again
+    throw new Error('OTP sending is disabled for phone number login with password.');
+  };
+
+  const verifyPatientOTP = async (confirmationResult: ConfirmationResult, otp: string) => {
+    try {
+      const result = await confirmationResult.confirm(otp);
+      const user = result.user;
+      const patientDoc = await getDoc(doc(db, 'patients', user.uid));
+      if (!patientDoc.exists()) {
+        await signOut(auth);
+        toast.error('No patient record found for this phone number.');
+        throw new Error('No patient record found for this phone number.');
+      }
+      // Store user details in cookies
+      setCookie('userEmail', user.phoneNumber || '');
+      setCookie('userUid', user.uid);
+      setCookie('userRole', 'patient');
+      toast.success('Patient logged in successfully with phone.');
+    } catch (error: any) {
+      toast.error('Invalid OTP: ' + error.message);
+      throw error;
+    }
+  };
+
+  const forgotPassword = async (email: string) => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+      toast.success('Password reset email sent.');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to send password reset email.');
+      throw error;
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       currentUser,
@@ -206,8 +285,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       registerPatient,
       registerStaff,
       logout,
+      sendPatientOTP,
+      verifyPatientOTP,
+      forgotPassword,
     }}>
       {children}
+      <div id="recaptcha-container" style={{ display: 'none' }}></div>
     </AuthContext.Provider>
   );
 };

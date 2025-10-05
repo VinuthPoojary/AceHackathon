@@ -11,23 +11,29 @@ import { useAuth } from "@/contexts/AuthProvider";
 import { toast } from "@/components/ui/sonner";
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  identifier: z.string().min(1),
   password: z.string().min(6),
 });
 
 const registerSchema = z.object({
   name: z.string().min(1),
-  email: z.string().email(),
+  identifier: z.string().min(1),
   password: z.string().min(6),
+  registerType: z.enum(["email", "phone"]),
+});
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email(),
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
 type RegisterForm = z.infer<typeof registerSchema>;
+type ForgotPasswordForm = z.infer<typeof forgotPasswordSchema>;
 
 export default function PatientAuth() {
-  const [activeTab, setActiveTab] = useState<"login" | "register">("login");
+  const [activeTab, setActiveTab] = useState<"login" | "register" | "forgot">("login");
   const navigate = useNavigate();
-  const { loginPatient, registerPatient } = useAuth();
+  const { loginPatient, registerPatient, forgotPassword } = useAuth();
 
   const loginForm = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -37,9 +43,13 @@ export default function PatientAuth() {
     resolver: zodResolver(registerSchema),
   });
 
+  const forgotPasswordForm = useForm<ForgotPasswordForm>({
+    resolver: zodResolver(forgotPasswordSchema),
+  });
+
   const onLogin = async (data: LoginForm) => {
     try {
-      await loginPatient(data.email, data.password);
+      await loginPatient(data.identifier, data.password);
       navigate("/patient");
     } catch (error: any) {
       toast.error(error.message || "Invalid credentials");
@@ -48,11 +58,26 @@ export default function PatientAuth() {
 
   const onRegister = async (data: RegisterForm) => {
     try {
-      await registerPatient(data.email, data.password, data.name);
+      const registerData = {
+        name: data.name,
+        password: data.password,
+        ...(data.registerType === "email" ? { email: data.identifier } : { phone: data.identifier }),
+      };
+      await registerPatient(registerData);
       toast.success("Registered successfully");
       setActiveTab("login");
     } catch (error: any) {
       toast.error(error.message || "Registration failed");
+    }
+  };
+
+  const onForgotPassword = async (data: ForgotPasswordForm) => {
+    try {
+      await forgotPassword(data.email);
+      toast.success("Password reset email sent");
+      setActiveTab("login");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to send password reset email");
     }
   };
 
@@ -70,7 +95,7 @@ export default function PatientAuth() {
       </p>
 
       <div className="w-full max-w-md">
-        <div className="grid grid-cols-2 mb-4 border rounded-lg overflow-hidden">
+        <div className="grid grid-cols-3 mb-4 border rounded-lg overflow-hidden">
           <button
             onClick={() => setActiveTab("login")}
             className={`p-2 w-full ${activeTab === "login" ? "bg-blue-100" : "bg-white"}`}
@@ -83,6 +108,12 @@ export default function PatientAuth() {
           >
             Register
           </button>
+          <button
+            onClick={() => setActiveTab("forgot")}
+            className={`p-2 w-full ${activeTab === "forgot" ? "bg-blue-100" : "bg-white"}`}
+          >
+            Forgot Password
+          </button>
         </div>
 
         {activeTab === "login" && (
@@ -90,12 +121,12 @@ export default function PatientAuth() {
             <form onSubmit={loginForm.handleSubmit(onLogin)} className="bg-white shadow-md border rounded-lg p-6 space-y-4">
               <FormField
                 control={loginForm.control}
-                name="email"
+                name="identifier"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>Email or Phone Number</FormLabel>
                     <FormControl>
-                      <Input placeholder="Email" type="email" {...field} />
+                      <Input placeholder="Email or Phone Number" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -137,12 +168,50 @@ export default function PatientAuth() {
               />
               <FormField
                 control={registerForm.control}
-                name="email"
+                name="registerType"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>Register with</FormLabel>
                     <FormControl>
-                      <Input placeholder="Email" type="email" {...field} />
+                      <div className="flex space-x-4">
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            value="email"
+                            {...field}
+                            checked={field.value === "email"}
+                            onChange={() => field.onChange("email")}
+                          />
+                          <span className="ml-2">Email</span>
+                        </label>
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            value="phone"
+                            {...field}
+                            checked={field.value === "phone"}
+                            onChange={() => field.onChange("phone")}
+                          />
+                          <span className="ml-2">Phone</span>
+                        </label>
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={registerForm.control}
+                name="identifier"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{registerForm.watch("registerType") === "email" ? "Email" : "Phone Number"}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder={registerForm.watch("registerType") === "email" ? "Email" : "Phone Number"}
+                        type={registerForm.watch("registerType") === "email" ? "email" : "tel"}
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -162,6 +231,27 @@ export default function PatientAuth() {
                 )}
               />
               <Button type="submit" className="w-full">Register</Button>
+            </form>
+          </Form>
+        )}
+
+        {activeTab === "forgot" && (
+          <Form {...forgotPasswordForm}>
+            <form onSubmit={forgotPasswordForm.handleSubmit(onForgotPassword)} className="bg-white shadow-md border rounded-lg p-6 space-y-4">
+              <FormField
+                control={forgotPasswordForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Email" type="email" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <Button type="submit" className="w-full">Send Reset Email</Button>
             </form>
           </Form>
         )}
