@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar } from "@/components/ui/calendar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -42,10 +41,12 @@ import {
 import { useAuth } from "@/contexts/AuthProvider";
 import { ALL_HOSPITALS, type Hospital } from "@/data/hospitals";
 import { db } from "@/lib/firebase";
-import { addDoc, collection, doc, getDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, query, where, onSnapshot, getDocs } from "firebase/firestore";
+import { addToQueue, generateQueueNumber } from "@/lib/queueService";
+import { isDoctorAvailableOnDate, formatAvailabilityStatus, isDoctorAvailableNow } from "@/lib/doctorAvailability";
 
 interface BookingData {
-  hospital: any;
+  hospitalname: any;
   department: string;
   doctor: string;
   appointmentType: string;
@@ -59,17 +60,24 @@ interface BookingData {
 }
 
 interface Doctor {
-  id: string;
+  id?: string;
   name: string;
-  specialty: string;
-  experience: string;
-  rating: number;
-  availability: string[];
+  specialization: string;
+  experience: number;
+  availableDays: string[];
+  availableTime: string;
   consultationFee: number;
-  nextAvailable: string;
   hospitalId: string;
-  qualifications: string[];
-  languages: string[];
+  hospitalName: string;
+  qualification: string;
+  status: string;
+  holidays?: string[]; // Array of dates in YYYY-MM-DD format
+  createdAt?: any; // Firestore timestamp
+  // Optional fields for backward compatibility
+  rating?: number;
+  nextAvailable?: string;
+  qualifications?: string[];
+  languages?: string[];
 }
 
 // Using the Hospital interface from hospitals.ts
@@ -90,40 +98,40 @@ const DEPARTMENTS = [
 // Using the comprehensive hospital data from hospitals.ts
 const HOSPITALS: Hospital[] = ALL_HOSPITALS;
 
-// Enhanced doctor data with hospital associations
+// Enhanced doctor data with hospital associations (fallback data)
 const DOCTORS: Record<string, Doctor[]> = {
   emergency: [
-    { id: "dr1", name: "Dr. Rajesh Kumar", specialty: "Emergency Medicine", experience: "15 years", rating: 4.8, availability: ["24/7"], consultationFee: 800, nextAvailable: "Available now", hospitalId: "UDP001", qualifications: ["MD Emergency Medicine", "MBBS"], languages: ["English", "Hindi", "Kannada"] },
-    { id: "dr2", name: "Dr. Priya Sharma", specialty: "Emergency Medicine", experience: "12 years", rating: 4.6, availability: ["24/7"], consultationFee: 750, nextAvailable: "Available now", hospitalId: "UDP003", qualifications: ["MD Emergency Medicine", "MBBS"], languages: ["English", "Hindi", "Tulu"] },
-    { id: "dr10", name: "Dr. Suresh Bhat", specialty: "Emergency Medicine", experience: "10 years", rating: 4.4, availability: ["24/7"], consultationFee: 600, nextAvailable: "Available now", hospitalId: "UDP004", qualifications: ["MD Emergency Medicine", "MBBS"], languages: ["English", "Hindi", "Kannada"] },
-    { id: "dr11", name: "Dr. Lakshmi Rao", specialty: "Emergency Medicine", experience: "13 years", rating: 4.5, availability: ["24/7"], consultationFee: 700, nextAvailable: "Available now", hospitalId: "UDP005", qualifications: ["MD Emergency Medicine", "MBBS"], languages: ["English", "Hindi", "Tulu"] }
+    { id: "dr1", name: "Dr. Rajesh Kumar", specialization: "Emergency Medicine", experience: 15, rating: 4.8, availableTime: "24/7", availableDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], consultationFee: 800, nextAvailable: "Available now", hospitalId: "UDP001", hospitalName: "Kasturba Medical College Hospital", qualification: "MD Emergency Medicine", status: "active", qualifications: ["MD Emergency Medicine", "MBBS"], languages: ["English", "Hindi", "Kannada"] },
+    { id: "dr2", name: "Dr. Priya Sharma", specialization: "Emergency Medicine", experience: 12, rating: 4.6, availableTime: "24/7", availableDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], consultationFee: 750, nextAvailable: "Available now", hospitalId: "UDP003", hospitalName: "Manipal Hospital Udupi", qualification: "MD Emergency Medicine", status: "active", qualifications: ["MD Emergency Medicine", "MBBS"], languages: ["English", "Hindi", "Tulu"] },
+    { id: "dr10", name: "Dr. Suresh Bhat", specialization: "Emergency Medicine", experience: 10, rating: 4.4, availableTime: "24/7", availableDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], consultationFee: 600, nextAvailable: "Available now", hospitalId: "UDP004", hospitalName: "Baliga Memorial Hospital", qualification: "MD Emergency Medicine", status: "active", qualifications: ["MD Emergency Medicine", "MBBS"], languages: ["English", "Hindi", "Kannada"] },
+    { id: "dr11", name: "Dr. Lakshmi Rao", specialization: "Emergency Medicine", experience: 13, rating: 4.5, availableTime: "24/7", availableDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], consultationFee: 700, nextAvailable: "Available now", hospitalId: "UDP005", hospitalName: "Adarsha Hospital", qualification: "MD Emergency Medicine", status: "active", qualifications: ["MD Emergency Medicine", "MBBS"], languages: ["English", "Hindi", "Tulu"] }
   ],
   cardiology: [
-    { id: "dr3", name: "Dr. Amit Patel", specialty: "Cardiology", experience: "20 years", rating: 4.9, availability: ["Mon-Fri 9AM-5PM", "Sat 9AM-1PM"], consultationFee: 1500, nextAvailable: "Today 2:00 PM", hospitalId: "UDP001", qualifications: ["DM Cardiology", "MD Medicine", "MBBS"], languages: ["English", "Hindi", "Gujarati"] },
-    { id: "dr4", name: "Dr. Sunita Reddy", specialty: "Cardiology", experience: "18 years", rating: 4.7, availability: ["Mon-Wed-Fri 10AM-4PM"], consultationFee: 1400, nextAvailable: "Tomorrow 10:00 AM", hospitalId: "UDP003", qualifications: ["DM Cardiology", "MD Medicine", "MBBS"], languages: ["English", "Telugu", "Kannada"] },
-    { id: "dr12", name: "Dr. Venkatesh Iyer", specialty: "Cardiology", experience: "16 years", rating: 4.6, availability: ["Mon-Fri 9AM-5PM"], consultationFee: 1200, nextAvailable: "Tomorrow 2:00 PM", hospitalId: "UDP005", qualifications: ["DM Cardiology", "MD Medicine", "MBBS"], languages: ["English", "Hindi", "Tamil"] }
+    { id: "dr3", name: "Dr. Amit Patel", specialization: "Cardiology", experience: 20, rating: 4.9, availableTime: "9AM-5PM", availableDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], consultationFee: 1500, nextAvailable: "Today 2:00 PM", hospitalId: "UDP001", hospitalName: "Kasturba Medical College Hospital", qualification: "DM Cardiology", status: "active", qualifications: ["DM Cardiology", "MD Medicine", "MBBS"], languages: ["English", "Hindi", "Gujarati"] },
+    { id: "dr4", name: "Dr. Sunita Reddy", specialization: "Cardiology", experience: 18, rating: 4.7, availableTime: "10AM-4PM", availableDays: ["Monday", "Wednesday", "Friday"], consultationFee: 1400, nextAvailable: "Tomorrow 10:00 AM", hospitalId: "UDP003", hospitalName: "Manipal Hospital Udupi", qualification: "DM Cardiology", status: "active", qualifications: ["DM Cardiology", "MD Medicine", "MBBS"], languages: ["English", "Telugu", "Kannada"] },
+    { id: "dr12", name: "Dr. Venkatesh Iyer", specialization: "Cardiology", experience: 16, rating: 4.6, availableTime: "9AM-5PM", availableDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], consultationFee: 1200, nextAvailable: "Tomorrow 2:00 PM", hospitalId: "UDP005", hospitalName: "Adarsha Hospital", qualification: "DM Cardiology", status: "active", qualifications: ["DM Cardiology", "MD Medicine", "MBBS"], languages: ["English", "Hindi", "Tamil"] }
   ],
   neurology: [
-    { id: "dr5", name: "Dr. Vikram Singh", specialty: "Neurology", experience: "22 years", rating: 4.8, availability: ["Tue-Thu-Sat 9AM-3PM"], consultationFee: 1800, nextAvailable: "Tuesday 9:00 AM", hospitalId: "UDP001", qualifications: ["DM Neurology", "MD Medicine", "MBBS"], languages: ["English", "Hindi", "Punjabi"] },
-    { id: "dr13", name: "Dr. Nandini Shetty", specialty: "Neurology", experience: "15 years", rating: 4.5, availability: ["Mon-Wed-Fri 10AM-4PM"], consultationFee: 1600, nextAvailable: "Tomorrow 10:00 AM", hospitalId: "UDP005", qualifications: ["DM Neurology", "MD Medicine", "MBBS"], languages: ["English", "Hindi", "Kannada"] }
+    { id: "dr5", name: "Dr. Vikram Singh", specialization: "Neurology", experience: 22, rating: 4.8, availableTime: "9AM-3PM", availableDays: ["Tuesday", "Thursday", "Saturday"], consultationFee: 1800, nextAvailable: "Tuesday 9:00 AM", hospitalId: "UDP001", hospitalName: "Kasturba Medical College Hospital", qualification: "DM Neurology", status: "active", qualifications: ["DM Neurology", "MD Medicine", "MBBS"], languages: ["English", "Hindi", "Punjabi"] },
+    { id: "dr13", name: "Dr. Nandini Shetty", specialization: "Neurology", experience: 15, rating: 4.5, availableTime: "10AM-4PM", availableDays: ["Monday", "Wednesday", "Friday"], consultationFee: 1600, nextAvailable: "Tomorrow 10:00 AM", hospitalId: "UDP005", hospitalName: "Adarsha Hospital", qualification: "DM Neurology", status: "active", qualifications: ["DM Neurology", "MD Medicine", "MBBS"], languages: ["English", "Hindi", "Kannada"] }
   ],
   orthopedics: [
-    { id: "dr6", name: "Dr. Meera Joshi", specialty: "Orthopedics", experience: "16 years", rating: 4.6, availability: ["Mon-Fri 8AM-6PM"], consultationFee: 1200, nextAvailable: "Today 3:30 PM", hospitalId: "UDP002", qualifications: ["MS Orthopedics", "MBBS"], languages: ["English", "Hindi", "Marathi"] },
-    { id: "dr7", name: "Dr. Ravi Kumar", specialty: "Orthopedics", experience: "14 years", rating: 4.7, availability: ["Mon-Sat 9AM-5PM"], consultationFee: 1100, nextAvailable: "Today 4:00 PM", hospitalId: "UDP003", qualifications: ["MS Orthopedics", "MBBS"], languages: ["English", "Hindi", "Tamil"] },
-    { id: "dr14", name: "Dr. Ashok Kumar", specialty: "Orthopedics", experience: "18 years", rating: 4.4, availability: ["Mon-Fri 9AM-5PM"], consultationFee: 1000, nextAvailable: "Tomorrow 11:00 AM", hospitalId: "UDP005", qualifications: ["MS Orthopedics", "MBBS"], languages: ["English", "Hindi", "Kannada"] }
+    { id: "dr6", name: "Dr. Meera Joshi", specialization: "Orthopedics", experience: 16, rating: 4.6, availableTime: "8AM-6PM", availableDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], consultationFee: 1200, nextAvailable: "Today 3:30 PM", hospitalId: "UDP002", hospitalName: "Dr. TMA Pai Hospital", qualification: "MS Orthopedics", status: "active", qualifications: ["MS Orthopedics", "MBBS"], languages: ["English", "Hindi", "Marathi"] },
+    { id: "dr7", name: "Dr. Ravi Kumar", specialization: "Orthopedics", experience: 14, rating: 4.7, availableTime: "9AM-5PM", availableDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"], consultationFee: 1100, nextAvailable: "Today 4:00 PM", hospitalId: "UDP003", hospitalName: "Manipal Hospital Udupi", qualification: "MS Orthopedics", status: "active", qualifications: ["MS Orthopedics", "MBBS"], languages: ["English", "Hindi", "Tamil"] },
+    { id: "dr14", name: "Dr. Ashok Kumar", specialization: "Orthopedics", experience: 18, rating: 4.4, availableTime: "9AM-5PM", availableDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], consultationFee: 1000, nextAvailable: "Tomorrow 11:00 AM", hospitalId: "UDP005", hospitalName: "Adarsha Hospital", qualification: "MS Orthopedics", status: "active", qualifications: ["MS Orthopedics", "MBBS"], languages: ["English", "Hindi", "Kannada"] }
   ],
   pediatrics: [
-    { id: "dr8", name: "Dr. Kavitha Nair", specialty: "Pediatrics", experience: "14 years", rating: 4.7, availability: ["Mon-Sat 9AM-5PM"], consultationFee: 900, nextAvailable: "Today 4:00 PM", hospitalId: "UDP001", qualifications: ["MD Pediatrics", "MBBS"], languages: ["English", "Malayalam", "Kannada"] },
-    { id: "dr15", name: "Dr. Radha Menon", specialty: "Pediatrics", experience: "12 years", rating: 4.6, availability: ["Mon-Fri 9AM-5PM"], consultationFee: 800, nextAvailable: "Tomorrow 2:00 PM", hospitalId: "UDP004", qualifications: ["MD Pediatrics", "MBBS"], languages: ["English", "Malayalam", "Kannada"] }
+    { id: "dr8", name: "Dr. Kavitha Nair", specialization: "Pediatrics", experience: 14, rating: 4.7, availableTime: "9AM-5PM", availableDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"], consultationFee: 900, nextAvailable: "Today 4:00 PM", hospitalId: "UDP001", hospitalName: "Kasturba Medical College Hospital", qualification: "MD Pediatrics", status: "active", qualifications: ["MD Pediatrics", "MBBS"], languages: ["English", "Malayalam", "Kannada"] },
+    { id: "dr15", name: "Dr. Radha Menon", specialization: "Pediatrics", experience: 12, rating: 4.6, availableTime: "9AM-5PM", availableDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], consultationFee: 800, nextAvailable: "Tomorrow 2:00 PM", hospitalId: "UDP004", hospitalName: "Baliga Memorial Hospital", qualification: "MD Pediatrics", status: "active", qualifications: ["MD Pediatrics", "MBBS"], languages: ["English", "Malayalam", "Kannada"] }
   ],
   gynecology: [
-    { id: "dr9", name: "Dr. Anjali Gupta", specialty: "Gynecology", experience: "16 years", rating: 4.5, availability: ["Mon-Fri 10AM-6PM"], consultationFee: 1000, nextAvailable: "Tomorrow 11:00 AM", hospitalId: "UDP002", qualifications: ["MS Obstetrics & Gynecology", "MBBS"], languages: ["English", "Hindi", "Kannada"] },
-    { id: "dr16", name: "Dr. Shobha Reddy", specialty: "Gynecology", experience: "14 years", rating: 4.4, availability: ["Mon-Sat 9AM-5PM"], consultationFee: 900, nextAvailable: "Today 3:00 PM", hospitalId: "UDP004", qualifications: ["MS Obstetrics & Gynecology", "MBBS"], languages: ["English", "Hindi", "Telugu"] }
+    { id: "dr9", name: "Dr. Anjali Gupta", specialization: "Gynecology", experience: 16, rating: 4.5, availableTime: "10AM-6PM", availableDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], consultationFee: 1000, nextAvailable: "Tomorrow 11:00 AM", hospitalId: "UDP002", hospitalName: "Dr. TMA Pai Hospital", qualification: "MS Obstetrics & Gynecology", status: "active", qualifications: ["MS Obstetrics & Gynecology", "MBBS"], languages: ["English", "Hindi", "Kannada"] },
+    { id: "dr16", name: "Dr. Shobha Reddy", specialization: "Gynecology", experience: 14, rating: 4.4, availableTime: "9AM-5PM", availableDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"], consultationFee: 900, nextAvailable: "Today 3:00 PM", hospitalId: "UDP004", hospitalName: "Baliga Memorial Hospital", qualification: "MS Obstetrics & Gynecology", status: "active", qualifications: ["MS Obstetrics & Gynecology", "MBBS"], languages: ["English", "Hindi", "Telugu"] }
   ],
   "general medicine": [
-    { id: "dr17", name: "Dr. Ramesh Shetty", specialty: "General Medicine", experience: "20 years", rating: 4.6, availability: ["Mon-Fri 9AM-6PM"], consultationFee: 700, nextAvailable: "Today 2:00 PM", hospitalId: "UDP002", qualifications: ["MD Medicine", "MBBS"], languages: ["English", "Hindi", "Kannada"] },
-    { id: "dr18", name: "Dr. Geetha Prasad", specialty: "General Medicine", experience: "18 years", rating: 4.5, availability: ["Mon-Sat 8AM-5PM"], consultationFee: 600, nextAvailable: "Tomorrow 9:00 AM", hospitalId: "UDP004", qualifications: ["MD Medicine", "MBBS"], languages: ["English", "Hindi", "Tulu"] },
-    { id: "dr19", name: "Dr. Manjunath Rao", specialty: "General Medicine", experience: "15 years", rating: 4.4, availability: ["Mon-Fri 10AM-6PM"], consultationFee: 650, nextAvailable: "Today 4:00 PM", hospitalId: "UDP005", qualifications: ["MD Medicine", "MBBS"], languages: ["English", "Hindi", "Kannada"] }
+    { id: "dr17", name: "Dr. Ramesh Shetty", specialization: "General Medicine", experience: 20, rating: 4.6, availableTime: "9AM-6PM", availableDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], consultationFee: 700, nextAvailable: "Today 2:00 PM", hospitalId: "UDP002", hospitalName: "Dr. TMA Pai Hospital", qualification: "MD Medicine", status: "active", qualifications: ["MD Medicine", "MBBS"], languages: ["English", "Hindi", "Kannada"] },
+    { id: "dr18", name: "Dr. Geetha Prasad", specialization: "General Medicine", experience: 18, rating: 4.5, availableTime: "8AM-5PM", availableDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"], consultationFee: 600, nextAvailable: "Tomorrow 9:00 AM", hospitalId: "UDP004", hospitalName: "Baliga Memorial Hospital", qualification: "MD Medicine", status: "active", qualifications: ["MD Medicine", "MBBS"], languages: ["English", "Hindi", "Tulu"] },
+    { id: "dr19", name: "Dr. Manjunath Rao", specialization: "General Medicine", experience: 15, rating: 4.4, availableTime: "10AM-6PM", availableDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], consultationFee: 650, nextAvailable: "Today 4:00 PM", hospitalId: "UDP005", hospitalName: "Adarsha Hospital", qualification: "MD Medicine", status: "active", qualifications: ["MD Medicine", "MBBS"], languages: ["English", "Hindi", "Kannada"] }
   ]
 };
 
@@ -152,13 +160,15 @@ const PAYMENT_METHODS = [
 interface EnhancedBookingFlowProps {
   selectedHospital?: any;
   onBookingComplete: (booking: any) => void;
+  onHospitalSelect?: (hospital: any) => void;
 }
 
-export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: EnhancedBookingFlowProps) => {
+export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHospitalSelect }: EnhancedBookingFlowProps) => {
   const { currentUser } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
+  
   const [bookingData, setBookingData] = useState<BookingData>({
-    hospital: selectedHospital || null,
+    hospitalname: selectedHospital || null,
     department: "",
     doctor: "",
     appointmentType: "",
@@ -176,9 +186,14 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
   const [bookingSuccess, setBookingSuccess] = useState(false);
   const [patientProfile, setPatientProfile] = useState<any>(null);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [loadingDoctors, setLoadingDoctors] = useState(false);
+  const [doctorsError, setDoctorsError] = useState<string | null>(null);
 
   // New state to store patients in queue count per department
   const [patientsInQueueCount, setPatientsInQueueCount] = useState<Record<string, number>>({});
+
+  // Debug logging
+  console.log("EnhancedBookingFlow rendered with:", { selectedHospital, currentStep, bookingData: bookingData.hospitalname });
 
   useEffect(() => {
     if (currentUser) {
@@ -187,24 +202,55 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
   }, [currentUser]);
 
   useEffect(() => {
-    if (bookingData.hospital && bookingData.department) {
-      // Filter doctors by hospital and department
-      const hospitalDoctors = DOCTORS[bookingData.department] || [];
-      const filteredDoctors = hospitalDoctors.filter(doctor =>
-        doctor.hospitalId === bookingData.hospital.id
-      );
-      setAvailableDoctors(filteredDoctors);
+    if (bookingData.hospitalname && bookingData.department) {
+      setLoadingDoctors(true);
+      setDoctorsError(null);
       setSelectedDoctor(null);
+      
+      // Fetch doctors from Firestore
+      fetchDoctorsFromFirestore(bookingData.hospitalname.id, bookingData.department)
+        .then((doctors) => {
+          setAvailableDoctors(doctors);
+          setLoadingDoctors(false);
+          
+          if (doctors.length === 0) {
+            setDoctorsError("No doctors found for this department. Please try a different department or hospital.");
+          }
+        })
+        .catch((error) => {
+          console.error("Error loading doctors:", error);
+          setLoadingDoctors(false);
+          setDoctorsError("Failed to load doctors. Using fallback data.");
+          
+          // Fallback to hardcoded data if Firestore fails
+          const hospitalDoctors = DOCTORS[bookingData.department] || [];
+          const filteredDoctors = hospitalDoctors.filter(doctor =>
+            doctor.hospitalId === bookingData.hospitalname.id
+          );
+          setAvailableDoctors(filteredDoctors);
+        });
+    } else {
+      setAvailableDoctors([]);
+      setSelectedDoctor(null);
+      setLoadingDoctors(false);
+      setDoctorsError(null);
     }
-  }, [bookingData.hospital, bookingData.department]);
+  }, [bookingData.hospitalname, bookingData.department]);
+
+  // Update booking data when selectedHospital prop changes
+  useEffect(() => {
+    if (selectedHospital && selectedHospital !== bookingData.hospitalname) {
+      setBookingData(prev => ({ ...prev, hospitalname: selectedHospital }));
+    }
+  }, [selectedHospital]);
 
   // useEffect to listen to checkins collection and update patients in queue count
   useEffect(() => {
-    if (!bookingData.hospital) return;
+    if (!bookingData.hospitalname) return;
 
     const q = query(
       collection(db, "checkins"),
-      where("hospitalId", "==", bookingData.hospital.id)
+      where("hospitalId", "==", bookingData.hospitalname.id)
     );
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -218,7 +264,7 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
     });
 
     return () => unsubscribe();
-  }, [bookingData.hospital]);
+  }, [bookingData.hospitalname]);
 
   const fetchPatientProfile = async () => {
     if (!currentUser) return;
@@ -233,8 +279,80 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
     }
   };
 
+  const fetchDoctorsFromFirestore = async (hospitalId: string, department: string) => {
+    try {
+      // Map department ID to specialization name for querying
+      const specializationMap: Record<string, string> = {
+        "emergency": "Emergency",
+        "cardiology": "Cardiology", 
+        "neurology": "Neurology",
+        "orthopedics": "Orthopedics",
+        "pediatrics": "Pediatrics",
+        "gynecology": "Gynecology",
+        "dermatology": "Dermatology",
+        "ophthalmology": "Ophthalmology",
+        "ent": "ENT",
+        "general": "General Medicine"
+      };
+
+      const specialization = specializationMap[department] || department;
+      
+      console.log("Fetching doctors for:", { hospitalId, department, specialization });
+      
+      // Query doctors from Firestore based on hospitalId and specialization
+      const q = query(
+        collection(db, "doctors"),
+        where("hospitalId", "==", hospitalId),
+        where("specialization", "==", specialization),
+        where("status", "==", "active")
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const doctors: Doctor[] = [];
+      
+      console.log("Found doctors:", querySnapshot.size);
+      
+      querySnapshot.forEach((doc) => {
+        const doctorData = doc.data();
+        console.log("Processing doctor:", doctorData);
+        
+        doctors.push({
+          id: doc.id,
+          name: doctorData.name || "Unknown Doctor",
+          specialization: doctorData.specialization || specialization,
+          experience: doctorData.experience || 0,
+          availableDays: doctorData.availableDays || [],
+          availableTime: doctorData.availableTime || "Not specified",
+          consultationFee: doctorData.consultationFee || 0,
+          hospitalId: doctorData.hospitalId || hospitalId,
+          hospitalName: doctorData.hospitalName || "Unknown Hospital",
+          qualification: doctorData.qualification || "Not specified",
+          status: doctorData.status || "active",
+          holidays: doctorData.holidays || [],
+          createdAt: doctorData.createdAt,
+          // Add default values for backward compatibility
+          rating: doctorData.rating || 4.5,
+          nextAvailable: doctorData.nextAvailable || "Available",
+          qualifications: doctorData.qualifications || [doctorData.qualification || "Not specified"],
+          languages: doctorData.languages || ["English", "Hindi"]
+        } as Doctor);
+      });
+      
+      console.log("Processed doctors:", doctors);
+      return doctors;
+    } catch (error) {
+      console.error("Error fetching doctors from Firestore:", error);
+      return [];
+    }
+  };
+
   const updateBookingData = (field: keyof BookingData, value: any) => {
     setBookingData(prev => ({ ...prev, [field]: value }));
+    
+    // If hospitalname is being selected, also update parent component
+    if (field === 'hospitalname' && onHospitalSelect) {
+      onHospitalSelect(value);
+    }
   };
 
   const calculateTotalPrice = () => {
@@ -257,7 +375,7 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
   };
 
   const handleBooking = async () => {
-    if (!currentUser || !selectedDoctor || !bookingData.hospital) {
+    if (!currentUser || !selectedDoctor || !bookingData.hospitalname) {
       toast.error("Please log in to book an appointment.");
       return;
     }
@@ -278,7 +396,7 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
         patientName: patientProfile?.fullName || "Unknown",
         patientEmail: currentUser.email,
         patientPhone: patientProfile?.phone || "",
-        hospital: bookingData.hospital,
+        hospitalname: bookingData.hospitalname,
         doctor: selectedDoctor,
         department: bookingData.department,
         appointmentType: bookingData.appointmentType,
@@ -304,20 +422,20 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
         const queueId = await addToQueue({
           patientId: currentUser.uid,
           patientName: patientProfile?.fullName || "Unknown",
-          hospitalId: bookingData.hospital.id,
-          hospitalName: bookingData.hospital.hospitalName,
+          hospitalId: bookingData.hospitalname.id,
+          hospitalName: bookingData.hospitalname.hospitalName,
           department: bookingData.department,
           doctorId: selectedDoctor?.id,
           doctorName: selectedDoctor?.name,
           appointmentType: bookingData.appointmentType,
           priority: bookingData.urgency === 'urgent' ? 'urgent' : 
                    bookingData.urgency === 'high' ? 'high' : 'normal',
-          bookingId: booking.id,
+          bookingId: booking.bookingId,
           estimatedWaitTime: 0 // Will be calculated in the service
         });
         
         // Update booking with queue information
-        const queueNumber = await generateQueueNumber(bookingData.hospital.id, bookingData.department);
+        const queueNumber = await generateQueueNumber(bookingData.hospitalname.id, bookingData.department);
         await addDoc(collection(db, "bookings"), {
           ...booking,
           queueId,
@@ -386,7 +504,7 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
         </p>
         <div className="bg-muted p-4 rounded-lg mb-4">
           <p><strong>Booking ID:</strong> BOOK{Date.now()}</p>
-          <p><strong>Hospital:</strong> {bookingData.hospital?.name}</p>
+          <p><strong>Hospital:</strong> {bookingData.hospitalname?.hospitalName || bookingData.hospitalname?.name}</p>
           <p><strong>Doctor:</strong> {selectedDoctor?.name}</p>
           <p><strong>Date:</strong> {bookingData.preferredDate.toLocaleDateString()}</p>
           <p><strong>Time:</strong> {bookingData.preferredTime}</p>
@@ -419,12 +537,20 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
         ))}
       </div>
 
-      {/* Step 1: Hospital Selection */}
+      {/* Step 1: Hospitalname Selection */}
       {currentStep === 1 && (
         <Card className="animate-fade-in-up">
           <CardHeader>
-            <CardTitle>Select Hospital</CardTitle>
-            <CardDescription>Choose the hospital where you want to book your appointment</CardDescription>
+            <CardTitle>Select Hospitalname</CardTitle>
+            <CardDescription>
+              Choose the hospitalname where you want to book your appointment
+              {bookingData.hospitalname && (
+                <div className="mt-2 p-2 bg-primary/10 rounded-lg">
+                  <p className="text-sm font-medium">Selected: {bookingData.hospitalname.hospitalName || bookingData.hospitalname.name}</p>
+                  <p className="text-xs text-muted-foreground">{bookingData.hospitalname.address}</p>
+                </div>
+              )}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -432,21 +558,21 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
                 <Card
                   key={hospital.id}
                   className={`cursor-pointer transition-all hover:shadow-md ${
-                    bookingData.hospital?.id === hospital.id ? 'ring-2 ring-primary bg-primary/5' : ''
+                    bookingData.hospitalname?.id === hospital.id ? 'ring-2 ring-primary bg-primary/5' : ''
                   }`}
-                  onClick={() => updateBookingData('hospital', hospital)}
+                  onClick={() => updateBookingData('hospitalname', hospital)}
                 >
                   <CardContent className="p-4">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <h3 className="font-medium text-lg">{hospital.name}</h3>
+                        <h3 className="font-medium text-lg">{hospital.hospitalName}</h3>
                         <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
                           <MapPin className="w-4 h-4" />
                           {hospital.address}
                         </p>
                         <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
                           <Phone className="w-4 h-4" />
-                          {hospital.phone}
+                          {hospital.contactNo}
                         </p>
                         <div className="flex flex-wrap gap-1 mt-2">
                           {hospital.specialties.slice(0, 4).map((specialty) => (
@@ -483,11 +609,19 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
             <div className="flex justify-end mt-6">
               <Button 
                 onClick={nextStep}
-                disabled={!bookingData.hospital}
+                disabled={!bookingData.hospitalname}
               >
                 Next Step
               </Button>
             </div>
+            {bookingData.hospitalname && (
+              <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-sm text-green-800">
+                  <strong>Selected Hospital:</strong> {bookingData.hospitalname.hospitalName || bookingData.hospitalname.name}
+                </p>
+                <p className="text-xs text-green-600">{bookingData.hospitalname.address}</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -497,12 +631,15 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
         <Card className="animate-fade-in-up">
           <CardHeader>
             <CardTitle>Select Department</CardTitle>
-            <CardDescription>Choose the department you need to visit at {bookingData.hospital?.name}</CardDescription>
+            <CardDescription>
+              Choose the department you need to visit at {bookingData.hospitalname?.hospitalName || bookingData.hospitalname?.name}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid md:grid-cols-2 gap-4">
               {DEPARTMENTS.filter(dept => 
-                bookingData.hospital?.specialties.includes(dept.name)
+                bookingData.hospitalname?.specialties?.includes(dept.name) || 
+                bookingData.hospitalname?.availableServices?.includes(dept.name)
               ).map((department) => (
                 <Card
                   key={department.id}
@@ -519,7 +656,16 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
                       <div>
                         <h3 className="font-medium">{department.name}</h3>
                         <p className="text-sm text-muted-foreground">
-                          {DOCTORS[department.id]?.filter(d => d.hospitalId === bookingData.hospital?.id).length || 0} doctors available
+                          {DOCTORS[department.id]?.filter(d => d.hospitalId === bookingData.hospitalname?.id).length || 0} doctors available
+                        </p>
+                        <p className="text-xs text-blue-600">
+                          {department.id === 'emergency' ? '24/7 Emergency Care' : 
+                           department.id === 'cardiology' ? 'Heart & Vascular Care' :
+                           department.id === 'neurology' ? 'Brain & Nervous System' :
+                           department.id === 'orthopedics' ? 'Bone & Joint Care' :
+                           department.id === 'pediatrics' ? 'Child Healthcare' :
+                           department.id === 'gynecology' ? 'Women\'s Health' :
+                           'General Medical Care'}
                         </p>
                         <p className="text-sm text-orange-600 font-medium">
                           {patientsInQueueCount[department.id] || 0} patients in queue
@@ -556,7 +702,19 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {availableDoctors.length > 0 ? (
+              {loadingDoctors ? (
+                <div className="text-center py-8">
+                  <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                  <h3 className="text-lg font-medium mb-2">Loading Doctors...</h3>
+                  <p className="text-muted-foreground">Fetching available doctors for this department</p>
+                </div>
+              ) : doctorsError ? (
+                <div className="text-center py-8">
+                  <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
+                  <h3 className="text-lg font-medium mb-2">Unable to Load Doctors</h3>
+                  <p className="text-muted-foreground">{doctorsError}</p>
+                </div>
+              ) : availableDoctors.length > 0 ? (
                 availableDoctors.map((doctor) => (
                   <Card
                     key={doctor.id}
@@ -572,41 +730,70 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
                             <User className="w-6 h-6 text-primary" />
                           </div>
                           <div>
-                            <h3 className="font-medium">{doctor.name}</h3>
-                            <p className="text-sm text-muted-foreground">{doctor.specialty}</p>
-                            <p className="text-sm text-muted-foreground">{doctor.experience}</p>
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {doctor.qualifications.slice(0, 2).map((qual, index) => (
-                                <Badge key={index} variant="outline" className="text-xs">
-                                  {qual}
-                                </Badge>
-                              ))}
+                            <h3 className="font-medium text-lg">{doctor.name}</h3>
+                            <p className="text-sm text-muted-foreground font-medium">{doctor.specialization}</p>
+                            <p className="text-sm text-blue-600">{doctor.experience} years experience</p>
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              <Badge variant="outline" className="text-xs">
+                                <GraduationCap className="w-3 h-3 mr-1" />
+                                {doctor.qualification}
+                              </Badge>
                             </div>
-                            <div className="flex gap-1 mt-1">
-                              {doctor.languages.slice(0, 2).map((lang, index) => (
-                                <Badge key={index} variant="secondary" className="text-xs">
-                                  {lang}
-                                </Badge>
-                              ))}
+                            <div className="flex gap-1 mt-2">
+                              <Badge variant={doctor.availableTime === "24/7" ? "default" : "secondary"} className="text-xs">
+                                <Clock className="w-3 h-3 mr-1" />
+                                {doctor.availableTime === "24/7" ? "Available 24/7" : `${doctor.availableTime}`}
+                              </Badge>
+                              <Badge variant="outline" className="text-xs">
+                                📅 {doctor.availableDays.length === 7 ? "All Days" : `${doctor.availableDays.length} Days`}
+                              </Badge>
                             </div>
                           </div>
                         </div>
                         <div className="text-right">
                           <div className="flex items-center gap-1 mb-1">
                             <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                            <span className="font-medium">{doctor.rating}</span>
+                            <span className="font-medium">{doctor.rating?.toFixed(1)}</span>
                           </div>
-                          <p className="text-lg font-bold text-green-600">₹{doctor.consultationFee}</p>
+                          <p className="text-xl font-bold text-green-600">₹{doctor.consultationFee}</p>
                           <p className="text-xs text-muted-foreground">{doctor.nextAvailable}</p>
+                          <Badge variant="outline" className="text-xs mt-1">
+                            {doctor.status === 'active' ? 'Available' : doctor.status}
+                          </Badge>
                         </div>
                       </div>
                       <div className="mt-3 pt-3 border-t">
-                        <div className="flex flex-wrap gap-1">
-                          {doctor.availability.map((time, index) => (
-                            <Badge key={index} variant="secondary" className="text-xs">
-                              {time}
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-muted-foreground">Availability:</span>
+                            <Badge variant={isDoctorAvailableNow(doctor) ? "default" : "secondary"} className="text-xs">
+                              {formatAvailabilityStatus(doctor)}
                             </Badge>
-                          ))}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-muted-foreground">Working Days:</span>
+                            <div className="flex flex-wrap gap-1">
+                              {doctor.availableDays.map((day, index) => (
+                                <Badge key={index} variant="outline" className="text-xs">
+                                  {day.substring(0, 3)}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-muted-foreground">Status:</span>
+                            <Badge variant={isDoctorAvailableNow(doctor) ? 'default' : 'destructive'} className="text-xs">
+                              {isDoctorAvailableNow(doctor) ? 'Available Now' : 'Currently Unavailable'}
+                            </Badge>
+                          </div>
+                          {doctor.holidays && doctor.holidays.length > 0 && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-muted-foreground">Holidays:</span>
+                              <Badge variant="outline" className="text-xs">
+                                {doctor.holidays.length} day{doctor.holidays.length > 1 ? 's' : ''} marked
+                              </Badge>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </CardContent>
@@ -617,6 +804,11 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
                   <User className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                   <h3 className="text-lg font-medium mb-2">No doctors available</h3>
                   <p className="text-muted-foreground">No doctors found for this department at the selected hospital</p>
+                  <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="text-sm text-yellow-800">
+                      <strong>Tip:</strong> Try selecting a different department or hospital to find available doctors.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
@@ -695,11 +887,12 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="preferredDate">Preferred Date</Label>
-                <Calendar
-                  mode="single"
-                  selected={bookingData.preferredDate}
-                  onSelect={(date) => date && updateBookingData('preferredDate', date)}
-                  disabled={(date) => date < new Date()}
+                <Input
+                  id="preferredDate"
+                  type="date"
+                  value={bookingData.preferredDate.toISOString().split('T')[0]}
+                  onChange={(e) => updateBookingData('preferredDate', new Date(e.target.value))}
+                  min={new Date().toISOString().split('T')[0]}
                 />
               </div>
               <div>
@@ -781,10 +974,10 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
               <h3 className="font-medium">Booking Summary</h3>
               <div className="grid md:grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p><strong>Hospital:</strong> {bookingData.hospital?.name}</p>
+                  <p><strong>Hospital:</strong> {bookingData.hospitalname?.hospitalName || bookingData.hospitalname?.name}</p>
                   <p><strong>Department:</strong> {DEPARTMENTS.find(d => d.id === bookingData.department)?.name}</p>
                   <p><strong>Doctor:</strong> {selectedDoctor?.name}</p>
-                  <p><strong>Specialty:</strong> {selectedDoctor?.specialty}</p>
+                  <p><strong>Specialty:</strong> {selectedDoctor?.specialization}</p>
                 </div>
                 <div>
                   <p><strong>Date:</strong> {bookingData.preferredDate.toLocaleDateString()}</p>
