@@ -43,7 +43,6 @@ import { useAuth } from "@/contexts/AuthProvider";
 import { ALL_HOSPITALS, type Hospital } from "@/data/hospitals";
 import { db } from "@/lib/firebase";
 import { addDoc, collection, doc, getDoc } from "firebase/firestore";
-import { addToQueue, generateQueueNumber } from "@/lib/queueService";
 
 interface BookingData {
   hospital: any;
@@ -178,6 +177,9 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
   const [patientProfile, setPatientProfile] = useState<any>(null);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
 
+  // New state to store patients in queue count per department
+  const [patientsInQueueCount, setPatientsInQueueCount] = useState<Record<string, number>>({});
+
   useEffect(() => {
     if (currentUser) {
       fetchPatientProfile();
@@ -188,13 +190,35 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
     if (bookingData.hospital && bookingData.department) {
       // Filter doctors by hospital and department
       const hospitalDoctors = DOCTORS[bookingData.department] || [];
-      const filteredDoctors = hospitalDoctors.filter(doctor => 
+      const filteredDoctors = hospitalDoctors.filter(doctor =>
         doctor.hospitalId === bookingData.hospital.id
       );
       setAvailableDoctors(filteredDoctors);
       setSelectedDoctor(null);
     }
   }, [bookingData.hospital, bookingData.department]);
+
+  // useEffect to listen to checkins collection and update patients in queue count
+  useEffect(() => {
+    if (!bookingData.hospital) return;
+
+    const q = query(
+      collection(db, "checkins"),
+      where("hospitalId", "==", bookingData.hospital.id)
+    );
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const counts: Record<string, number> = {};
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        const department = data.department;
+        counts[department] = (counts[department] || 0) + 1;
+      });
+      setPatientsInQueueCount(counts);
+    });
+
+    return () => unsubscribe();
+  }, [bookingData.hospital]);
 
   const fetchPatientProfile = async () => {
     if (!currentUser) return;
@@ -496,6 +520,9 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete }: Enh
                         <h3 className="font-medium">{department.name}</h3>
                         <p className="text-sm text-muted-foreground">
                           {DOCTORS[department.id]?.filter(d => d.hospitalId === bookingData.hospital?.id).length || 0} doctors available
+                        </p>
+                        <p className="text-sm text-orange-600 font-medium">
+                          {patientsInQueueCount[department.id] || 0} patients in queue
                         </p>
                       </div>
                     </div>

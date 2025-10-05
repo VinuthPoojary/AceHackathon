@@ -119,6 +119,8 @@ const Index = () => {
               <ArrowRight className="ml-2 h-5 w-5" />
           </Button>
           </div>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
+          </div>
 
           {/* Emergency CTA */}
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-w-md mx-auto">

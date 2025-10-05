@@ -21,6 +21,8 @@ import EmailTest from "./pages/EmailTest";
 import { AuthProvider } from "./contexts/AuthProvider";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthDebugger } from "./components/AuthDebugger";
+import { DirectQueueJoin } from "./components/DirectQueueJoin";
+import { VirtualCheckIn } from "./components/VirtualCheckIn";
 
 const queryClient = new QueryClient();
 
@@ -65,7 +67,6 @@ const App = () => (
             
             {/* Display Routes */}
             <Route path="/display" element={<QueueDisplay />} />
-            
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
