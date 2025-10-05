@@ -96,12 +96,9 @@ const eraseCookie = (name: string) => {
 interface AuthContextType {
   currentUser: User | null;
   isPatientLoggedIn: boolean;
-  isStaffLoggedIn: boolean;
   isLoading: boolean;
   loginPatient: (identifier: string, password: string) => Promise<void>;
-  loginStaff: (email: string, password: string, staffId: string, hospitalId: string) => Promise<void>;
   registerPatient: (data: { email?: string; phone?: string; password: string; name: string }) => Promise<void>;
-  registerStaff: (email: string, password: string, name: string, staffId: string, hospitalId: string) => Promise<void>;
   logout: () => Promise<void>;
   sendPatientOTP: (phoneNumber: string) => Promise<ConfirmationResult>;
   verifyPatientOTP: (confirmationResult: ConfirmationResult, otp: string) => Promise<void>;
@@ -125,10 +122,7 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isPatientLoggedIn, setIsPatientLoggedIn] = useState(false);
-  const [isStaffLoggedIn, setIsStaffLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-
-  const validStaffIds = ['STAFF001', 'STAFF002', 'STAFF003']; // Predefined staff IDs
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -142,12 +136,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (authData && authData.uid === user.uid) {
           if (authData.role === 'patient') {
             setIsPatientLoggedIn(true);
-            setIsStaffLoggedIn(false);
-            setIsLoading(false);
-            return;
-          } else if (authData.role === 'staff') {
-            setIsStaffLoggedIn(true);
-            setIsPatientLoggedIn(false);
             setIsLoading(false);
             return;
           }
@@ -158,7 +146,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           const patientDoc = await getDoc(doc(db, 'patients', user.uid));
           if (patientDoc.exists()) {
             setIsPatientLoggedIn(true);
-            setIsStaffLoggedIn(false);
             setAuthData({
               email: user.email || '',
               uid: user.uid,
@@ -167,36 +154,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setIsLoading(false);
             return;
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error('Error checking patient document:', error);
+          // If it's a permission error, continue to check other roles
+          if (error.code !== 'permission-denied') {
+            // For non-permission errors, we might want to handle differently
+          }
         }
         
+        
+        // Check if user is admin
         try {
-          const staffDoc = await getDoc(doc(db, 'staff', user.uid));
-          if (staffDoc.exists()) {
-            setIsStaffLoggedIn(true);
+          const adminDoc = await getDoc(doc(db, 'admins', user.uid));
+          if (adminDoc.exists()) {
+            // Admin users don't use the regular patient auth flow
+            // They use localStorage-based auth in AdminLogin component
             setIsPatientLoggedIn(false);
-            setAuthData({
-              email: user.email || '',
-              uid: user.uid,
-              role: 'staff'
-            });
             setIsLoading(false);
             return;
           }
-        } catch (error) {
-          console.error('Error checking staff document:', error);
+        } catch (error: any) {
+          console.error('Error checking admin document:', error);
+          // Continue with normal flow
         }
         
         // If user exists but no role found, clear auth data
         clearAuthData();
         setIsPatientLoggedIn(false);
-        setIsStaffLoggedIn(false);
       } else {
         // Clear auth data when user is null
         clearAuthData();
         setIsPatientLoggedIn(false);
-        setIsStaffLoggedIn(false);
       }
       
       setIsLoading(false);
@@ -240,88 +228,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     toast.success('Patient logged in successfully.');
   };
 
-  const loginStaff = async (email: string, password: string, staffId: string, hospitalId: string) => {
-    try {
-      if (!validStaffIds.includes(staffId)) {
-        toast.error('Invalid staff ID.');
-        throw new Error('Invalid staff ID.');
-      }
-      
-      if (!email || !email.includes('@')) {
-        toast.error('Please enter a valid email address.');
-        throw new Error('Invalid email format.');
-      }
-      
-      if (!password) {
-        toast.error('Please enter your password.');
-        throw new Error('Password required.');
-      }
-      
-      console.log('Attempting to login staff with:', { email, staffId, hospitalId });
-      
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      
-      console.log('User authenticated successfully:', user.uid);
-      
-      const staffDoc = await getDoc(doc(db, 'staff', user.uid));
-      if (!staffDoc.exists()) {
-        await signOut(auth);
-        toast.error('No staff record found for this user.');
-        throw new Error('No staff record found for this user.');
-      }
-      
-      const staffData = staffDoc.data();
-      if (staffData.staffId !== staffId) {
-        await signOut(auth);
-        toast.error('Staff ID does not match.');
-        throw new Error('Staff ID does not match.');
-      }
-      
-      if (staffData.hospitalId !== hospitalId) {
-        await signOut(auth);
-        toast.error('Hospital access denied. You are not authorized for this hospital.');
-        throw new Error('Hospital access denied. You are not authorized for this hospital.');
-      }
-      
-      // Store user details in localStorage and cookies
-      setAuthData({
-        email: user.email || '',
-        uid: user.uid,
-        role: 'staff'
-      });
-      
-      console.log('Staff login successful');
-      toast.success('Staff logged in successfully.');
-    } catch (error: any) {
-      console.error('Staff login error:', error);
-      
-      if (error.code === 'auth/user-not-found') {
-        toast.error('No account found with this email address.');
-        throw new Error('User not found.');
-      } else if (error.code === 'auth/wrong-password') {
-        toast.error('Incorrect password.');
-        throw new Error('Wrong password.');
-      } else if (error.code === 'auth/invalid-email') {
-        toast.error('Invalid email address format.');
-        throw new Error('Invalid email format.');
-      } else if (error.code === 'auth/user-disabled') {
-        toast.error('This account has been disabled.');
-        throw new Error('Account disabled.');
-      } else if (error.code === 'auth/too-many-requests') {
-        toast.error('Too many failed attempts. Please try again later.');
-        throw new Error('Too many requests.');
-      } else if (error.code === 'auth/network-request-failed') {
-        toast.error('Network error. Please check your internet connection.');
-        throw new Error('Network error.');
-      } else {
-        const message = error.message || 'Login failed';
-        const cleanedMessage = message.replace(/^Firebase: Error \([^)]+\)\.\s*/, '');
-        toast.error(cleanedMessage);
-        throw new Error(cleanedMessage);
-      }
-    }
-  };
 
   const registerPatient = async (data: { email?: string; phone?: string; password: string; name: string }) => {
     try {
@@ -366,68 +272,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const registerStaff = async (email: string, password: string, name: string, staffId: string, hospitalId: string) => {
-    try {
-      if (!validStaffIds.includes(staffId)) {
-        toast.error('Invalid staff ID.');
-        throw new Error('Invalid staff ID.');
-      }
-      
-      // Validate email format
-      if (!email || !email.includes('@')) {
-        toast.error('Please enter a valid email address.');
-        throw new Error('Invalid email format.');
-      }
-      
-      // Validate password strength
-      if (!password || password.length < 6) {
-        toast.error('Password must be at least 6 characters long.');
-        throw new Error('Password too short.');
-      }
-      
-      console.log('Attempting to register staff with:', { email, staffId, hospitalId });
-      
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      
-      console.log('User created successfully:', user.uid);
-      
-      await setDoc(doc(db, 'staff', user.uid), {
-        name,
-        email,
-        staffId,
-        hospitalId,
-        createdAt: new Date(),
-      });
-      
-      console.log('Staff document created successfully');
-      toast.success('Staff registered successfully.');
-    } catch (error: any) {
-      console.error('Staff registration error:', error);
-      
-      if (error.code === 'auth/email-already-in-use') {
-        toast.error('This email is already registered. Please switch to the Login tab and use your existing credentials.');
-        throw new Error('Email already in use.');
-      } else if (error.code === 'auth/weak-password') {
-        toast.error('Password is too weak. Please choose a stronger password.');
-        throw new Error('Password too weak.');
-      } else if (error.code === 'auth/invalid-email') {
-        toast.error('Invalid email address format.');
-        throw new Error('Invalid email format.');
-      } else if (error.code === 'auth/operation-not-allowed') {
-        toast.error('Email/password accounts are not enabled. Please contact administrator.');
-        throw new Error('Email/password authentication not enabled.');
-      } else if (error.code === 'auth/network-request-failed') {
-        toast.error('Network error. Please check your internet connection.');
-        throw new Error('Network error.');
-      } else {
-        const message = error.message || 'Registration failed';
-        const cleanedMessage = message.replace(/^Firebase: Error \([^)]+\)\.\s*/, '');
-        toast.error(cleanedMessage);
-        throw new Error(cleanedMessage);
-      }
-    }
-  };
 
   const logout = async () => {
     await signOut(auth);
@@ -478,12 +322,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     <AuthContext.Provider value={{
       currentUser,
       isPatientLoggedIn,
-      isStaffLoggedIn,
       isLoading,
       loginPatient,
-      loginStaff,
       registerPatient,
-      registerStaff,
       logout,
       sendPatientOTP,
       verifyPatientOTP,

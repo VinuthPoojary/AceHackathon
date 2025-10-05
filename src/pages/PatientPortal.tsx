@@ -12,6 +12,7 @@ import { SOSEmergency } from "@/components/SOSEmergency";
 import { EnhancedBookingFlow } from "@/components/EnhancedBookingFlow";
 import PatientDashboard from "./PatientDashboard";
 import { useAuth } from "@/contexts/AuthProvider";
+import { toast } from "@/components/ui/sonner";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, addDoc, collection } from "firebase/firestore";
 
@@ -108,7 +109,7 @@ const PatientPortal = () => {
 
   const handleCheckIn = () => {
     if (!isProfileComplete()) {
-      alert("Please complete your profile before check-in.");
+      toast.error("Please complete your profile before check-in.");
       return;
     }
     const price = calculatePrice();
@@ -116,7 +117,7 @@ const PatientPortal = () => {
       // Simulate Razorpay payment gateway
       setPaymentProcessing(true);
       setTimeout(() => {
-        alert(`Payment of ₹${price} successful!`);
+        toast.success(`Payment of ₹${price} successful!`);
         handlePaymentSuccess();
       }, 2000);
     } else {
@@ -282,7 +283,7 @@ const PatientPortal = () => {
                     <span className="text-sm text-muted-foreground">Department: {selectedDepartment}</span>
                   </div>
 
-                  <QueuePosition position={queuePosition} estimatedWait={estimatedWait} />
+                  <QueuePosition hospitalId={selectedHospital?.id} />
 
                   <div className="grid md:grid-cols-3 gap-4 mt-6">
                     <Card className="p-4 bg-background/50">

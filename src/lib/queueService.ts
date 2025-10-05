@@ -1,0 +1,353 @@
+import { db } from './firebase';
+import { 
+  collection, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  getDocs, 
+  query, 
+  where, 
+  orderBy, 
+  limit,
+  onSnapshot,
+  serverTimestamp,
+  increment
+} from 'firebase/firestore';
+
+export interface QueueEntry {
+  id: string;
+  patientId: string;
+  patientName: string;
+  hospitalId: string;
+  hospitalName: string;
+  department: string;
+  doctorId?: string;
+  doctorName?: string;
+  appointmentType: string;
+  queueNumber: number;
+  status: 'waiting' | 'called' | 'in_progress' | 'completed' | 'cancelled';
+  estimatedWaitTime: number; // in minutes
+  actualWaitTime?: number; // in minutes
+  bookingId: string;
+  createdAt: any;
+  calledAt?: any;
+  completedAt?: any;
+  priority: 'normal' | 'high' | 'urgent';
+  notes?: string;
+}
+
+export interface HospitalQueue {
+  hospitalId: string;
+  hospitalName: string;
+  department: string;
+  currentQueue: QueueEntry[];
+  activeQueueNumber: number;
+  totalPatientsToday: number;
+  averageWaitTime: number;
+  lastUpdated: any;
+}
+
+// Generate a unique queue number for a hospital and department
+export const generateQueueNumber = async (hospitalId: string, department: string): Promise<number> => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const queueQuery = query(
+      collection(db, 'queue_entries'),
+      where('hospitalId', '==', hospitalId),
+      where('department', '==', department),
+      where('createdAt', '>=', today),
+      orderBy('queueNumber', 'desc'),
+      limit(1)
+    );
+    
+    const snapshot = await getDocs(queueQuery);
+    
+    if (snapshot.empty) {
+      return 1; // First patient of the day
+    }
+    
+    const lastEntry = snapshot.docs[0].data();
+    return (lastEntry.queueNumber || 0) + 1;
+  } catch (error) {
+    console.error('Error generating queue number:', error);
+    throw new Error('Failed to generate queue number');
+  }
+};
+
+// Add a patient to the queue
+export const addToQueue = async (queueData: Omit<QueueEntry, 'id' | 'queueNumber' | 'createdAt' | 'status'>): Promise<string> => {
+  try {
+    const queueNumber = await generateQueueNumber(queueData.hospitalId, queueData.department);
+    
+    const queueEntry = {
+      ...queueData,
+      queueNumber,
+      status: 'waiting' as const,
+      createdAt: serverTimestamp(),
+      estimatedWaitTime: calculateEstimatedWaitTime(queueData.department, queueNumber)
+    };
+    
+    const docRef = await addDoc(collection(db, 'queue_entries'), queueEntry);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error adding to queue:', error);
+    throw new Error('Failed to add patient to queue');
+  }
+};
+
+// Update queue entry status
+export const updateQueueStatus = async (queueId: string, status: QueueEntry['status'], notes?: string): Promise<void> => {
+  try {
+    const updateData: any = {
+      status,
+      updatedAt: serverTimestamp()
+    };
+    
+    if (status === 'called') {
+      updateData.calledAt = serverTimestamp();
+    } else if (status === 'completed') {
+      updateData.completedAt = serverTimestamp();
+      // Calculate actual wait time
+      const queueDoc = await getDocs(query(collection(db, 'queue_entries'), where('__name__', '==', queueId)));
+      if (!queueDoc.empty) {
+        const queueData = queueDoc.docs[0].data();
+        const createdAt = queueData.createdAt?.toDate();
+        const completedAt = new Date();
+        if (createdAt) {
+          updateData.actualWaitTime = Math.round((completedAt.getTime() - createdAt.getTime()) / (1000 * 60));
+        }
+      }
+    }
+    
+    if (notes) {
+      updateData.notes = notes;
+    }
+    
+    await updateDoc(doc(db, 'queue_entries', queueId), updateData);
+  } catch (error) {
+    console.error('Error updating queue status:', error);
+    throw new Error('Failed to update queue status');
+  }
+};
+
+// Get current queue for a hospital and department
+export const getHospitalQueue = (hospitalId: string, department: string, callback: (queue: QueueEntry[]) => void) => {
+  const queueQuery = query(
+    collection(db, 'queue_entries'),
+    where('hospitalId', '==', hospitalId),
+    where('department', '==', department),
+    where('status', 'in', ['waiting', 'called', 'in_progress']),
+    orderBy('queueNumber', 'asc')
+  );
+  
+  return onSnapshot(queueQuery, (snapshot) => {
+    const queue = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as QueueEntry[];
+    callback(queue);
+  });
+};
+
+// Get all queues for a hospital
+export const getHospitalQueues = (hospitalId: string, callback: (queues: HospitalQueue[]) => void) => {
+  const queueQuery = query(
+    collection(db, 'queue_entries'),
+    where('hospitalId', '==', hospitalId),
+    where('status', 'in', ['waiting', 'called', 'in_progress']),
+    orderBy('department', 'asc'),
+    orderBy('queueNumber', 'asc')
+  );
+  
+  return onSnapshot(queueQuery, (snapshot) => {
+    const entries = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as QueueEntry[];
+    
+    // Group by department
+    const departmentQueues = entries.reduce((acc, entry) => {
+      const key = entry.department;
+      if (!acc[key]) {
+        acc[key] = [];
+      }
+      acc[key].push(entry);
+      return acc;
+    }, {} as Record<string, QueueEntry[]>);
+    
+    const queues: HospitalQueue[] = Object.entries(departmentQueues).map(([department, queue]) => ({
+      hospitalId,
+      hospitalName: queue[0]?.hospitalName || '',
+      department,
+      currentQueue: queue,
+      activeQueueNumber: queue.find(entry => entry.status === 'called')?.queueNumber || 0,
+      totalPatientsToday: queue.length,
+      averageWaitTime: calculateAverageWaitTime(queue),
+      lastUpdated: new Date()
+    }));
+    
+    callback(queues);
+  });
+};
+
+// Get patient's queue position
+export const getPatientQueuePosition = (patientId: string, hospitalId: string, callback: (position: QueueEntry | null) => void) => {
+  const queueQuery = query(
+    collection(db, 'queue_entries'),
+    where('patientId', '==', patientId),
+    where('hospitalId', '==', hospitalId),
+    where('status', 'in', ['waiting', 'called', 'in_progress']),
+    limit(1)
+  );
+  
+  return onSnapshot(queueQuery, (snapshot) => {
+    if (snapshot.empty) {
+      callback(null);
+      return;
+    }
+    
+    const entry = {
+      id: snapshot.docs[0].id,
+      ...snapshot.docs[0].data()
+    } as QueueEntry;
+    
+    callback(entry);
+  });
+};
+
+// Calculate estimated wait time based on department and queue position
+const calculateEstimatedWaitTime = (department: string, queueNumber: number): number => {
+  const baseWaitTimes: Record<string, number> = {
+    'Emergency': 10,
+    'Cardiology': 25,
+    'Neurology': 30,
+    'Orthopedics': 20,
+    'Pediatrics': 15,
+    'Gynecology': 20,
+    'Dermatology': 15,
+    'Ophthalmology': 15,
+    'ENT': 15,
+    'General Medicine': 20
+  };
+  
+  const baseTime = baseWaitTimes[department] || 20;
+  return baseTime + (queueNumber - 1) * 5; // Each patient adds 5 minutes
+};
+
+// Calculate average wait time for a queue
+const calculateAverageWaitTime = (queue: QueueEntry[]): number => {
+  const completedEntries = queue.filter(entry => entry.actualWaitTime);
+  if (completedEntries.length === 0) {
+    return queue[0]?.estimatedWaitTime || 20;
+  }
+  
+  const totalWaitTime = completedEntries.reduce((sum, entry) => sum + (entry.actualWaitTime || 0), 0);
+  return Math.round(totalWaitTime / completedEntries.length);
+};
+
+// Get queue statistics for a hospital
+export const getQueueStatistics = async (hospitalId: string, date?: Date): Promise<{
+  totalPatients: number;
+  averageWaitTime: number;
+  completedPatients: number;
+  cancelledPatients: number;
+  departments: Record<string, number>;
+}> => {
+  try {
+    const startDate = date || new Date();
+    startDate.setHours(0, 0, 0, 0);
+    
+    const endDate = new Date(startDate);
+    endDate.setHours(23, 59, 59, 999);
+    
+    const queueQuery = query(
+      collection(db, 'queue_entries'),
+      where('hospitalId', '==', hospitalId),
+      where('createdAt', '>=', startDate),
+      where('createdAt', '<=', endDate)
+    );
+    
+    const snapshot = await getDocs(queueQuery);
+    const entries = snapshot.docs.map(doc => doc.data()) as QueueEntry[];
+    
+    const completedPatients = entries.filter(entry => entry.status === 'completed').length;
+    const cancelledPatients = entries.filter(entry => entry.status === 'cancelled').length;
+    
+    const departments = entries.reduce((acc, entry) => {
+      acc[entry.department] = (acc[entry.department] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    const completedWithWaitTime = entries.filter(entry => 
+      entry.status === 'completed' && entry.actualWaitTime
+    );
+    
+    const averageWaitTime = completedWithWaitTime.length > 0 
+      ? Math.round(completedWithWaitTime.reduce((sum, entry) => sum + (entry.actualWaitTime || 0), 0) / completedWithWaitTime.length)
+      : 0;
+    
+    return {
+      totalPatients: entries.length,
+      averageWaitTime,
+      completedPatients,
+      cancelledPatients,
+      departments
+    };
+  } catch (error) {
+    console.error('Error getting queue statistics:', error);
+    throw new Error('Failed to get queue statistics');
+  }
+};
+
+// Cancel a queue entry
+export const cancelQueueEntry = async (queueId: string, reason?: string): Promise<void> => {
+  try {
+    await updateDoc(doc(db, 'queue_entries', queueId), {
+      status: 'cancelled',
+      cancelledAt: serverTimestamp(),
+      cancellationReason: reason,
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.error('Error cancelling queue entry:', error);
+    throw new Error('Failed to cancel queue entry');
+  }
+};
+
+// Call next patient in queue
+export const callNextPatient = async (hospitalId: string, department: string): Promise<QueueEntry | null> => {
+  try {
+    const queueQuery = query(
+      collection(db, 'queue_entries'),
+      where('hospitalId', '==', hospitalId),
+      where('department', '==', department),
+      where('status', '==', 'waiting'),
+      orderBy('queueNumber', 'asc'),
+      limit(1)
+    );
+    
+    const snapshot = await getDocs(queueQuery);
+    
+    if (snapshot.empty) {
+      return null; // No patients waiting
+    }
+    
+    const nextPatient = snapshot.docs[0];
+    await updateDoc(nextPatient.ref, {
+      status: 'called',
+      calledAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    
+    return {
+      id: nextPatient.id,
+      ...nextPatient.data()
+    } as QueueEntry;
+  } catch (error) {
+    console.error('Error calling next patient:', error);
+    throw new Error('Failed to call next patient');
+  }
+};
