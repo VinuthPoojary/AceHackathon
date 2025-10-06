@@ -1,4 +1,87 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "patientId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "preferredDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "hospitalId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "preferredDate",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "patientId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "preferredDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "checkins",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "hospitalId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "department",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "checkedInAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "doctors",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "hospitalId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "specialization",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }
