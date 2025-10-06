@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Clock, Users, Activity } from "lucide-react";
-import { getHospitalQueues, QueueEntry } from "@/lib/queueService";
+import { getHospitalQueues, QueueEntry, HospitalQueue } from "@/lib/queueService";
 
 // Common departments available across hospitals
 const COMMON_DEPARTMENTS = [
@@ -25,7 +25,7 @@ const COMMON_DEPARTMENTS = [
 
 const QueueDisplay = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [queues, setQueues] = useState<QueueEntry[]>([]);
+  const [queues, setQueues] = useState<HospitalQueue[]>([]);
   const [selectedHospital, setSelectedHospital] = useState<string>("MGL001"); // Default to first hospital
   const [selectedDepartment, setSelectedDepartment] = useState<string>("all");
 
@@ -39,11 +39,7 @@ const QueueDisplay = () => {
 
     // Subscribe to hospital queues dynamically
     const unsubscribe = getHospitalQueues(selectedHospital, (queuesData) => {
-      // Flatten all currentQueue arrays from all departments into one array for display
-      const allQueueEntries = queuesData.flatMap(queue => queue.currentQueue);
-      // Sort by queueNumber ascending
-      allQueueEntries.sort((a, b) => a.queueNumber - b.queueNumber);
-      setQueues(allQueueEntries);
+      setQueues(queuesData);
     });
 
     return () => unsubscribe();
@@ -81,14 +77,22 @@ const QueueDisplay = () => {
   };
 
   const calculateAverageWaitTime = () => {
-    if (filteredQueues.length === 0) return 0;
-    const totalWaitTime = filteredQueues.reduce((sum, entry) => sum + (entry.estimatedWaitTime || 0), 0);
-    return Math.round(totalWaitTime / filteredQueues.length);
+    const allEntries = filteredQueues.flatMap(queue => queue.currentQueue);
+    if (allEntries.length === 0) return 0;
+    const totalWaitTime = allEntries.reduce((sum, entry) => sum + (entry.estimatedWaitTime || 0), 0);
+    return Math.round(totalWaitTime / allEntries.length);
+  };
+
+  const getTotalInQueue = () => {
+    return filteredQueues.reduce((sum, queue) => sum + queue.currentQueue.length, 0);
   };
 
   const getNowServing = () => {
-    const calledEntry = filteredQueues.find(q => q.status === 'called');
-    return calledEntry ? `Q${calledEntry.queueNumber}` : 'N/A';
+    for (const queue of filteredQueues) {
+      const calledEntry = queue.currentQueue.find(q => q.status === 'called');
+      if (calledEntry) return `Q${calledEntry.queueNumber}`;
+    }
+    return 'N/A';
   };
 
   return (
@@ -149,7 +153,7 @@ const QueueDisplay = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-muted-foreground mb-2">Total in Queue</p>
-                <p className="text-5xl font-bold text-primary">{filteredQueues.length}</p>
+                <p className="text-5xl font-bold text-primary">{getTotalInQueue()}</p>
               </div>
               <Users className="h-16 w-16 text-primary opacity-20" />
             </div>
@@ -192,7 +196,7 @@ const QueueDisplay = () => {
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredQueues.map((patient, index) => (
+              {filteredQueues.flatMap(queue => queue.currentQueue).map((patient, index) => (
                 <div
                   key={patient.id}
                   className={`flex items-center justify-between p-6 rounded-lg transition-all ${

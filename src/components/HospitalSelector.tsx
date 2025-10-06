@@ -13,8 +13,8 @@ import { collection, query, where, onSnapshot } from "firebase/firestore";
 // Using the Hospital interface from hospitals.ts
 
 interface HospitalSelectorProps {
-  selectedHospital: any;
-  onSelectHospital: (hospital: any) => void;
+  selectedHospital?: any;
+  onSelectHospital?: (hospital: any) => void;
   userLocation?: { lat: number; lng: number };
 }
 
@@ -109,12 +109,12 @@ export const HospitalSelector = ({ selectedHospital, onSelectHospital, userLocat
       {!isLoading && (
         <div className="grid gap-4">
           {filteredHospitals.map((hospital) => (
-            <Card 
-              key={hospital.id} 
+            <Card
+              key={hospital.id}
               className={`cursor-pointer transition-all duration-200 hover:shadow-lg ${
                 selectedHospital?.id === hospital.id ? 'ring-2 ring-primary bg-primary/5' : ''
               }`}
-              onClick={() => onSelectHospital(hospital)}
+              onClick={() => onSelectHospital?.(hospital)}
             >
               <CardHeader>
                 <div className="flex justify-between items-start">
