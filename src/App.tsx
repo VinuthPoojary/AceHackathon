@@ -51,14 +51,14 @@ const App = () => (
             <Route path="/auth/patient" element={<PatientAuth />} />
             {/* Patient Routes */}
             <Route path="/patient-auth" element={<PatientAuth />} />
-            <Route
+            {/* <Route
               path="/patient"
               element={
                 <ProtectedRoute type="patient">
                   <PatientPortal />
                 </ProtectedRoute>
               }
-            />
+            /> */}
             <Route
               path="/patient-dashboard"
               element={
