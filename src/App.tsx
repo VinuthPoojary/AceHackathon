@@ -63,7 +63,7 @@ const App = () => (
             <Route path="/verify-otp" element={<OTPVerification onVerificationComplete={() => {}} onBack={() => {}} />} />
             
             {/* Email Test */}
-            <Route path="/email-test" element={<EmailTest />} />
+            {/* <Route path="/email-test" element={<EmailTest />} /> */}
             
             {/* Display Routes */}
             <Route path="/display" element={<QueueDisplay />} />

@@ -9,6 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "@/components/ui/sonner";
 import { 
   Calendar as CalendarIcon,
@@ -36,12 +38,14 @@ import {
   CreditCard as PaymentIcon,
   Building2,
   GraduationCap,
-  Languages
+  Languages,
+  Settings,
+  FastForward
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthProvider";
 import { ALL_HOSPITALS, type Hospital } from "@/data/hospitals";
 import { db } from "@/lib/firebase";
-import { addDoc, collection, doc, getDoc, query, where, onSnapshot, getDocs } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, query, where, onSnapshot, getDocs, updateDoc } from "firebase/firestore";
 import { addToQueue, generateQueueNumber } from "@/lib/queueService";
 import { isDoctorAvailableOnDate, formatAvailabilityStatus, isDoctorAvailableNow, isDoctorAvailableRightNow, getNextAvailableDate, getAvailableTimeSlots, isBookingAllowed, getMinimumBookingDate } from "@/lib/doctorAvailability";
 
@@ -188,9 +192,15 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
   const [doctorsError, setDoctorsError] = useState<string | null>(null);
+  const [bookingId, setBookingId] = useState<string>("");
+  const [queueNumber, setQueueNumber] = useState<number | null>(null);
 
   // New state to store patients in queue count per department
   const [patientsInQueueCount, setPatientsInQueueCount] = useState<Record<string, number>>({});
+  
+  // State to control auto-advance behavior
+  const [autoAdvanceEnabled, setAutoAdvanceEnabled] = useState(true);
+  const [isAutoAdvancing, setIsAutoAdvancing] = useState(false);
 
   // Debug logging
   console.log("EnhancedBookingFlow rendered with:", { selectedHospital, currentStep, bookingData: bookingData.hospitalname });
@@ -346,7 +356,7 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
     }
   };
 
-  const updateBookingData = (field: keyof BookingData, value: any) => {
+  const updateBookingData = (field: keyof BookingData, value: any, autoAdvance: boolean = true) => {
     setBookingData(prev => {
       const updated = { ...prev, [field]: value };
       
@@ -364,6 +374,42 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
     // If hospitalname is being selected, also update parent component
     if (field === 'hospitalname' && onHospitalSelect) {
       onHospitalSelect(value);
+    }
+
+    // Auto-advance to next step based on the field being updated
+    if (autoAdvance && autoAdvanceEnabled) {
+      setIsAutoAdvancing(true);
+      setTimeout(() => {
+        switch (field) {
+          case 'hospitalname':
+            if (value && currentStep === 1) {
+              nextStep();
+            }
+            break;
+          case 'department':
+            if (value && currentStep === 2) {
+              nextStep();
+            }
+            break;
+          case 'appointmentType':
+          case 'urgency':
+          case 'preferredTime':
+            // For step 4, advance when appointment type, urgency, and time are selected
+            if (currentStep === 4) {
+              const newData = { ...bookingData, [field]: value };
+              if (newData.appointmentType && newData.urgency && newData.preferredTime && selectedDoctor) {
+                nextStep();
+              }
+            }
+            break;
+          case 'paymentMethod':
+            if (value && currentStep === 5) {
+              // Don't auto-advance on payment method selection, let user review
+            }
+            break;
+        }
+        setIsAutoAdvancing(false);
+      }, 500); // Small delay to allow UI to update
     }
   };
 
@@ -422,13 +468,22 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
         return;
       }
 
+      // Generate booking ID first
+      const generatedBookingId = `BOOK${Date.now()}`;
+      setBookingId(generatedBookingId);
+      console.log("Generated booking ID:", generatedBookingId);
+
       const booking = {
         patientId: currentUser.uid,
         patientName: patientProfile?.fullName || "Unknown",
         patientEmail: currentUser.email,
         patientPhone: patientProfile?.phone || "",
         hospitalname: bookingData.hospitalname,
+        hospitalId: bookingData.hospitalname.id, // Add hospitalId for hospital dashboard query
+        hospitalName: bookingData.hospitalname.hospitalName || bookingData.hospitalname.name,
         doctor: selectedDoctor,
+        doctorName: selectedDoctor?.name || "",
+        doctorId: selectedDoctor?.id || "",
         department: bookingData.department,
         appointmentType: bookingData.appointmentType,
         preferredDate: bookingData.preferredDate,
@@ -441,15 +496,18 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
         paymentMethod: bookingData.paymentMethod,
         status: "confirmed",
         bookingDate: new Date(),
-        bookingId: `BOOK${Date.now()}`,
+        bookingId: generatedBookingId,
         paymentStatus: "completed"
       };
-
+      
       // Save booking to Firestore
       const bookingRef = await addDoc(collection(db, "bookings"), booking);
       
       // Add to queue system
       try {
+        const generatedQueueNumber = await generateQueueNumber(bookingData.hospitalname.id, bookingData.department);
+        setQueueNumber(generatedQueueNumber);
+        
         const queueId = await addToQueue({
           patientId: currentUser.uid,
           patientName: patientProfile?.fullName || "Unknown",
@@ -461,20 +519,21 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
           appointmentType: bookingData.appointmentType,
           priority: bookingData.urgency === 'urgent' ? 'urgent' : 
                    bookingData.urgency === 'high' ? 'high' : 'normal',
-          bookingId: booking.bookingId,
-          estimatedWaitTime: 0 // Will be calculated in the service
+          bookingId: generatedBookingId,
+          estimatedWaitTime: 20 + (generatedQueueNumber - 1) * 5 // Simple estimation based on queue position
         });
         
         // Update booking with queue information
-        const queueNumber = await generateQueueNumber(bookingData.hospitalname.id, bookingData.department);
-        await addDoc(collection(db, "bookings"), {
-          ...booking,
+        await updateDoc(bookingRef, {
           queueId,
-          queueNumber,
-          estimatedWaitTime: 20 + (queueNumber - 1) * 5 // Simple estimation
+          queueNumber: generatedQueueNumber,
+          estimatedWaitTime: 20 + (generatedQueueNumber - 1) * 5,
+          urgency: bookingData.urgency,
+          priority: bookingData.urgency === 'urgent' ? 'urgent' : 
+                   bookingData.urgency === 'high' ? 'high' : 'normal'
         });
         
-        toast.success(`Booking confirmed! Your queue number is ${queueNumber}. Please arrive 15 minutes before your appointment.`);
+        toast.success(`Booking confirmed! Your queue number is ${generatedQueueNumber}. Please arrive 15 minutes before your appointment.`);
       } catch (queueError) {
         console.error("Error adding to queue:", queueError);
         // Still proceed with booking even if queue fails
@@ -525,56 +584,177 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
     return dept?.color || "text-gray-500";
   };
 
+  // Booking Success Popup Modal
   if (bookingSuccess) {
+    console.log("Popup rendering with booking ID:", bookingId);
     return (
-      <Card className="text-center p-8">
-        <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-        <h2 className="text-2xl font-bold mb-2">Booking Confirmed!</h2>
-        <p className="text-muted-foreground mb-4">
-          Your appointment has been successfully booked and payment processed.
-        </p>
-        <div className="bg-muted p-4 rounded-lg mb-4">
-          <p><strong>Booking ID:</strong> BOOK{Date.now()}</p>
-          <p><strong>Hospital:</strong> {bookingData.hospitalname?.hospitalName || bookingData.hospitalname?.name}</p>
-          <p><strong>Doctor:</strong> {selectedDoctor?.name}</p>
-          <p><strong>Date:</strong> {bookingData.preferredDate.toLocaleDateString()}</p>
-          <p><strong>Time:</strong> {bookingData.preferredTime}</p>
-          <p><strong>Total Paid:</strong> ₹{calculateTotalPrice()}</p>
+      <div 
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+        onClick={() => setBookingSuccess(false)}
+      >
+        <div 
+          className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 animate-fade-in-up border border-gray-100"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header with Success Icon */}
+          <div className="text-center pt-8 pb-4">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+              <CheckCircle className="w-12 h-12 text-green-500 animate-bounce" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Booking Confirmed!</h2>
+            <p className="text-gray-600 text-sm">
+              Your appointment has been successfully booked and payment processed.
+            </p>
+          </div>
+
+          {/* Booking Details */}
+          <div className="px-6 pb-6">
+            <div className="bg-gray-50 rounded-lg p-4 mb-6">
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Booking ID:</span>
+                  <span className="font-mono font-medium text-gray-800">{bookingId || "Loading..."}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Hospital:</span>
+                  <span className="font-medium text-gray-800">{bookingData.hospitalname?.hospitalName || bookingData.hospitalname?.name}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Doctor:</span>
+                  <span className="font-medium text-gray-800">{selectedDoctor?.name}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Date:</span>
+                  <span className="font-medium text-gray-800">{bookingData.preferredDate.toLocaleDateString()}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Time:</span>
+                  <span className="font-medium text-gray-800">{bookingData.preferredTime}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Queue Number:</span>
+                  <span className="font-bold text-blue-600 text-lg">#{queueNumber || 'TBD'}</span>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+                  <span className="text-gray-600 font-medium">Total Paid:</span>
+                  <span className="font-bold text-green-600 text-lg">₹{calculateTotalPrice()}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <Button 
+                onClick={() => {
+                  setBookingSuccess(false);
+                  // Refresh the page to start fresh
+                  window.location.reload();
+                }} 
+                className="flex-1 bg-primary hover:bg-primary/90 text-white font-medium py-3 rounded-lg transition-all duration-200 hover:shadow-lg"
+              >
+                <span className="mr-2">📅</span>
+                Book Another Appointment
+              </Button>
+              <Button 
+                onClick={() => {
+                  setBookingSuccess(false);
+                  // Refresh the page to start fresh
+                  window.location.reload();
+                }}
+                variant="outline" 
+                className="flex-1 border-gray-300 hover:bg-gray-50 font-medium py-3 rounded-lg transition-all duration-200"
+              >
+                <span className="mr-2">✕</span>
+                Close
+              </Button>
+            </div>
+          </div>
+
+          {/* Footer Note */}
+          <div className="bg-blue-50 px-6 py-3 rounded-b-xl">
+            <p className="text-xs text-blue-700 text-center">
+              💡 Please arrive 15 minutes before your appointment time. You'll receive a confirmation email shortly.
+            </p>
+          </div>
         </div>
-        <Button onClick={() => setBookingSuccess(false)}>
-          Book Another Appointment
-        </Button>
-      </Card>
+      </div>
     );
   }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in-up">
-      {/* Progress Steps */}
+      {/* Progress Steps and Auto-Advance Toggle */}
       <div className="flex items-center justify-between mb-8 animate-slide-in-right">
-        {[1, 2, 3, 4, 5].map((step) => (
-          <div key={step} className="flex items-center">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-              currentStep >= step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-            }`}>
-              {step}
+        <div className="flex items-center">
+          {[1, 2, 3, 4, 5].map((step) => (
+            <div key={step} className="flex items-center">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                currentStep >= step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+              }`}>
+                {step}
+              </div>
+              {step < 5 && (
+                <div className={`w-16 h-1 mx-2 ${
+                  currentStep > step ? 'bg-primary' : 'bg-muted'
+                }`} />
+              )}
             </div>
-            {step < 5 && (
-              <div className={`w-16 h-1 mx-2 ${
-                currentStep > step ? 'bg-primary' : 'bg-muted'
-              }`} />
-            )}
-          </div>
-        ))}
+          ))}
+        </div>
+        
+        {/* Auto-Advance Toggle */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 cursor-help">
+                <FastForward className={`w-4 h-4 ${autoAdvanceEnabled ? 'text-primary' : 'text-gray-600'} ${isAutoAdvancing ? 'animate-pulse' : ''}`} />
+                <Label htmlFor="auto-advance" className="text-sm font-medium text-gray-700">
+                  Auto-advance
+                </Label>
+                <Switch
+                  id="auto-advance"
+                  checked={autoAdvanceEnabled}
+                  onCheckedChange={setAutoAdvanceEnabled}
+                  className="data-[state=checked]:bg-primary"
+                />
+                {isAutoAdvancing && (
+                  <div className="flex items-center gap-1 text-xs text-primary animate-pulse">
+                    <FastForward className="w-3 h-3" />
+                    <span>Advancing...</span>
+                  </div>
+                )}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-sm">
+                When enabled, automatically advances to the next step when you make a selection.<br/>
+                Disable to manually control each step.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       {/* Step 1: Hospitalname Selection */}
       {currentStep === 1 && (
         <Card className="animate-fade-in-up">
           <CardHeader>
-            <CardTitle>Select Hospitalname</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              Select Hospital
+              {autoAdvanceEnabled && (
+                <Badge variant="outline" className="text-xs">
+                  <FastForward className="w-3 h-3 mr-1" />
+                  Auto-advance
+                </Badge>
+              )}
+            </CardTitle>
             <CardDescription>
-              Choose the hospitalname where you want to book your appointment
+              Choose the hospital where you want to book your appointment
+              {autoAdvanceEnabled && (
+                <div className="mt-2 text-xs text-blue-600 bg-blue-50 p-2 rounded">
+                  💡 Selecting a hospital will automatically advance to the next step
+                </div>
+              )}
               {bookingData.hospitalname && (
                 <div className="mt-2 p-2 bg-primary/10 rounded-lg">
                   <p className="text-sm font-medium">Selected: {bookingData.hospitalname.hospitalName || bookingData.hospitalname.name}</p>
@@ -641,8 +821,10 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
               <Button 
                 onClick={nextStep}
                 disabled={!bookingData.hospitalname}
+                className={!autoAdvanceEnabled ? "bg-primary hover:bg-primary/90" : ""}
               >
                 Next Step
+                {!autoAdvanceEnabled && <ArrowRight className="w-4 h-4 ml-2" />}
               </Button>
             </div>
             {bookingData.hospitalname && (
@@ -661,9 +843,22 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
       {currentStep === 2 && (
         <Card className="animate-fade-in-up">
           <CardHeader>
-            <CardTitle>Select Department</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              Select Department
+              {autoAdvanceEnabled && (
+                <Badge variant="outline" className="text-xs">
+                  <FastForward className="w-3 h-3 mr-1" />
+                  Auto-advance
+                </Badge>
+              )}
+            </CardTitle>
             <CardDescription>
               Choose the department you need to visit at {bookingData.hospitalname?.hospitalName || bookingData.hospitalname?.name}
+              {autoAdvanceEnabled && (
+                <div className="mt-2 text-xs text-blue-600 bg-blue-50 p-2 rounded">
+                  💡 Selecting a department will automatically advance to the next step
+                </div>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -715,9 +910,10 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
               <Button 
                 onClick={nextStep}
                 disabled={!bookingData.department}
+                className={!autoAdvanceEnabled ? "bg-primary hover:bg-primary/90" : ""}
               >
                 Next Step
-                <ArrowRight className="w-4 h-4 ml-2" />
+                {!autoAdvanceEnabled && <ArrowRight className="w-4 h-4 ml-2" />}
               </Button>
             </div>
           </CardContent>
@@ -728,9 +924,22 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
       {currentStep === 3 && (
         <Card className="animate-fade-in-up">
           <CardHeader>
-            <CardTitle>Select Doctor</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              Select Doctor
+              {autoAdvanceEnabled && (
+                <Badge variant="outline" className="text-xs">
+                  <FastForward className="w-3 h-3 mr-1" />
+                  Auto-advance
+                </Badge>
+              )}
+            </CardTitle>
             <CardDescription>
               Choose your preferred doctor from {DEPARTMENTS.find(d => d.id === bookingData.department)?.name}
+              {autoAdvanceEnabled && (
+                <div className="mt-2 text-xs text-blue-600 bg-blue-50 p-2 rounded">
+                  💡 Selecting a doctor will automatically advance to the next step
+                </div>
+              )}
               <br />
               <span className="text-sm text-muted-foreground mt-1 block">
                 💡 Active doctors are available for booking. Working days and times are checked during appointment scheduling.
@@ -769,6 +978,16 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
                         return;
                       }
                       setSelectedDoctor(doctor);
+                      // Auto-advance to next step after doctor selection
+                      if (autoAdvanceEnabled) {
+                        setIsAutoAdvancing(true);
+                        setTimeout(() => {
+                          if (currentStep === 3) {
+                            nextStep();
+                          }
+                          setIsAutoAdvancing(false);
+                        }, 500);
+                      }
                     }}
                   >
                     <CardContent className="p-4">
@@ -884,9 +1103,10 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
               <Button 
                 onClick={nextStep}
                 disabled={!selectedDoctor}
+                className={!autoAdvanceEnabled ? "bg-primary hover:bg-primary/90" : ""}
               >
                 Next Step
-                <ArrowRight className="w-4 h-4 ml-2" />
+                {!autoAdvanceEnabled && <ArrowRight className="w-4 h-4 ml-2" />}
               </Button>
             </div>
           </CardContent>
@@ -897,8 +1117,23 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
       {currentStep === 4 && (
         <Card className="animate-fade-in-up">
           <CardHeader>
-            <CardTitle>Appointment Details</CardTitle>
-            <CardDescription>Provide additional information for your appointment</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              Appointment Details
+              {autoAdvanceEnabled && (
+                <Badge variant="outline" className="text-xs">
+                  <FastForward className="w-3 h-3 mr-1" />
+                  Auto-advance
+                </Badge>
+              )}
+            </CardTitle>
+            <CardDescription>
+              Provide additional information for your appointment
+              {autoAdvanceEnabled && (
+                <div className="mt-2 text-xs text-blue-600 bg-blue-50 p-2 rounded">
+                  💡 Completing appointment type, urgency, and time will automatically advance to the next step
+                </div>
+              )}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Booking Rules Information */}
@@ -1121,9 +1356,10 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
                     !isBookingAllowed(bookingData.preferredDate, bookingData.appointmentType || '').allowed
                   )
                 }
+                className={!autoAdvanceEnabled ? "bg-primary hover:bg-primary/90" : ""}
               >
                 Next Step
-                <ArrowRight className="w-4 h-4 ml-2" />
+                {!autoAdvanceEnabled && <ArrowRight className="w-4 h-4 ml-2" />}
               </Button>
             </div>
             {selectedDoctor && bookingData.preferredDate && (
@@ -1155,8 +1391,23 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
       {currentStep === 5 && (
         <Card className="animate-fade-in-up">
           <CardHeader>
-            <CardTitle>Payment & Review</CardTitle>
-            <CardDescription>Review your booking details and complete payment</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              Payment & Review
+              {autoAdvanceEnabled && (
+                <Badge variant="outline" className="text-xs">
+                  <FastForward className="w-3 h-3 mr-1" />
+                  Manual Step
+                </Badge>
+              )}
+            </CardTitle>
+            <CardDescription>
+              Review your booking details and complete payment
+              {autoAdvanceEnabled && (
+                <div className="mt-2 text-xs text-orange-600 bg-orange-50 p-2 rounded">
+                  💡 This step requires manual review before proceeding to payment
+                </div>
+              )}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Booking Summary */}

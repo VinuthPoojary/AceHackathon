@@ -58,9 +58,7 @@ export const generateQueueNumber = async (hospitalId: string, department: string
       collection(db, 'queue_entries'),
       where('hospitalId', '==', hospitalId),
       where('department', '==', department),
-      where('createdAt', '>=', today),
-      orderBy('queueNumber', 'desc'),
-      limit(1)
+      where('createdAt', '>=', today)
     );
     
     const snapshot = await getDocs(queueQuery);
@@ -69,8 +67,11 @@ export const generateQueueNumber = async (hospitalId: string, department: string
       return 1; // First patient of the day
     }
     
-    const lastEntry = snapshot.docs[0].data();
-    return (lastEntry.queueNumber || 0) + 1;
+    // Find the highest queue number from the results
+    const entries = snapshot.docs.map(doc => doc.data());
+    const maxQueueNumber = Math.max(...entries.map(entry => entry.queueNumber || 0));
+    
+    return maxQueueNumber + 1;
   } catch (error) {
     console.error('Error generating queue number:', error);
     throw new Error('Failed to generate queue number');
@@ -139,8 +140,7 @@ export const getHospitalQueue = (hospitalId: string, department: string, callbac
     collection(db, 'queue_entries'),
     where('hospitalId', '==', hospitalId),
     where('department', '==', department),
-    where('status', 'in', ['waiting', 'called', 'in_progress']),
-    orderBy('queueNumber', 'asc')
+    where('status', 'in', ['waiting', 'called', 'in_progress'])
   );
   
   return onSnapshot(queueQuery, (snapshot) => {
@@ -148,7 +148,10 @@ export const getHospitalQueue = (hospitalId: string, department: string, callbac
       id: doc.id,
       ...doc.data()
     })) as QueueEntry[];
-    callback(queue);
+    
+    // Sort by queue number on the client side
+    const sortedQueue = queue.sort((a, b) => a.queueNumber - b.queueNumber);
+    callback(sortedQueue);
   });
 };
 
@@ -157,9 +160,7 @@ export const getHospitalQueues = (hospitalId: string, callback: (queues: Hospita
   const queueQuery = query(
     collection(db, 'queue_entries'),
     where('hospitalId', '==', hospitalId),
-    where('status', 'in', ['waiting', 'called', 'in_progress']),
-    orderBy('department', 'asc'),
-    orderBy('queueNumber', 'asc')
+    where('status', 'in', ['waiting', 'called', 'in_progress'])
   );
   
   return onSnapshot(queueQuery, (snapshot) => {
@@ -168,8 +169,16 @@ export const getHospitalQueues = (hospitalId: string, callback: (queues: Hospita
       ...doc.data()
     })) as QueueEntry[];
     
+    // Sort by department first, then by queue number
+    const sortedEntries = entries.sort((a, b) => {
+      if (a.department !== b.department) {
+        return a.department.localeCompare(b.department);
+      }
+      return a.queueNumber - b.queueNumber;
+    });
+    
     // Group by department
-    const departmentQueues = entries.reduce((acc, entry) => {
+    const departmentQueues = sortedEntries.reduce((acc, entry) => {
       const key = entry.department;
       if (!acc[key]) {
         acc[key] = [];
@@ -324,9 +333,7 @@ export const callNextPatient = async (hospitalId: string, department: string): P
       collection(db, 'queue_entries'),
       where('hospitalId', '==', hospitalId),
       where('department', '==', department),
-      where('status', '==', 'waiting'),
-      orderBy('queueNumber', 'asc'),
-      limit(1)
+      where('status', '==', 'waiting')
     );
     
     const snapshot = await getDocs(queueQuery);
@@ -335,17 +342,23 @@ export const callNextPatient = async (hospitalId: string, department: string): P
       return null; // No patients waiting
     }
     
-    const nextPatient = snapshot.docs[0];
-    await updateDoc(nextPatient.ref, {
+    // Find the patient with the lowest queue number
+    const entries = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as QueueEntry[];
+    
+    const nextPatient = entries.reduce((min, current) => 
+      current.queueNumber < min.queueNumber ? current : min
+    );
+    
+    await updateDoc(doc(db, 'queue_entries', nextPatient.id), {
       status: 'called',
       calledAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
     
-    return {
-      id: nextPatient.id,
-      ...nextPatient.data()
-    } as QueueEntry;
+    return nextPatient;
   } catch (error) {
     console.error('Error calling next patient:', error);
     throw new Error('Failed to call next patient');

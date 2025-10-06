@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/components/ui/sonner';
 import { db, auth } from '@/lib/firebase';
 import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where, getDocs } from 'firebase/firestore';
@@ -82,6 +83,8 @@ const AdminDashboard: React.FC = () => {
   const [isDeletePatientDialogOpen, setIsDeletePatientDialogOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isBulkAdding, setIsBulkAdding] = useState(false);
+  const [selectedHospitals, setSelectedHospitals] = useState<string[]>([]);
+  const [isAddingSelected, setIsAddingSelected] = useState(false);
   const navigate = useNavigate();
 
   // Check admin authentication
@@ -161,6 +164,130 @@ const AdminDashboard: React.FC = () => {
     return password;
   };
 
+  const addSelectedHospitals = async () => {
+    if (selectedHospitals.length === 0) {
+      toast.error('Please select at least one hospital to add');
+      return;
+    }
+
+    setIsAddingSelected(true);
+    try {
+      let successCount = 0;
+      let errorCount = 0;
+
+      const hospitalsToAdd = ALL_HOSPITALS.filter(hospital => selectedHospitals.includes(hospital.id));
+
+      for (const hospital of hospitalsToAdd) {
+        try {
+          // Check if hospital already exists
+          const existingHospitals = await getDocs(
+            query(collection(db, 'hospitals'), where('hospitalId', '==', hospital.hospitalId))
+          );
+
+          if (!existingHospitals.empty) {
+            console.log(`Hospital ${hospital.hospitalName} already exists, skipping...`);
+            continue;
+          }
+
+          // Create Firebase Auth user for the hospital
+          let firebaseUid = null;
+          try {
+            const userCredential = await createUserWithEmailAndPassword(auth, hospital.email, hospital.password);
+            firebaseUid = userCredential.user.uid;
+            console.log(`✅ Firebase user created for hospital: ${hospital.hospitalName}`);
+          } catch (authError: any) {
+            console.log(`⚠️ Firebase user already exists or error for ${hospital.hospitalName}:`, authError.code);
+            if (authError.code === 'auth/email-already-in-use') {
+              console.log(`📧 Email already in use for ${hospital.hospitalName}, continuing...`);
+            }
+          }
+
+          // Create hospital record in Firestore
+          await setDoc(doc(db, 'hospitals', hospital.id), {
+            hospitalName: hospital.hospitalName,
+            location: hospital.location,
+            address: hospital.address,
+            email: hospital.email,
+            contactNo: hospital.contactNo,
+            availableServices: hospital.availableServices,
+            minimumPrice: hospital.minimumPrice,
+            timing: hospital.timing,
+            daysAvailable: hospital.daysAvailable,
+            status: 'active',
+            approvedAt: new Date(),
+            hospitalId: hospital.hospitalId,
+            password: hospital.password,
+            firebaseUid,
+            region: hospital.region,
+            specialties: hospital.specialties,
+            facilities: hospital.facilities,
+            rating: hospital.rating,
+            emergencyAvailable: hospital.emergencyAvailable,
+            operatingHours: hospital.operatingHours,
+            priceRange: hospital.priceRange,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+
+          console.log(`✅ Hospital record created: ${hospital.hospitalName}`);
+          successCount++;
+
+          console.log(hospital)
+
+          // Send welcome email
+          try {
+            await sendEmailNotification({
+              to: hospital.email,
+              subject: 'Welcome to MedConnect Udupi',
+              html: `
+              <h2>Welcome to MedConnect Udupi!</h2>
+              <p>Your hospital <strong>${hospital.hospitalName}</strong> has been successfully added to our platform.</p>
+              
+              <h3>Login Credentials:</h3>
+              <ul>
+                <li><strong>Hospital ID:</strong> ${hospital.hospitalId}</li>
+                <li><strong>Email:</strong> ${hospital.email}</li>
+                <li><strong>Password:</strong> ${hospital.password}</li>
+              </ul>
+              
+              <h3>Next Steps:</h3>
+              <ol>
+                <li>Login to your hospital dashboard using the credentials above</li>
+                <li>Add your doctors and staff members</li>
+                <li>Configure your services and availability</li>
+                <li>Start receiving patient appointments</li>
+              </ol>
+              
+              <p>If you have any questions, please contact our support team.</p>
+              
+              <p>Best regards,<br>MedConnect Udupi Team</p>
+              `
+            });
+            console.log(`✅ Welcome email sent to ${hospital.email}`);
+          } catch (emailError) {
+            console.error(`❌ Failed to send email to ${hospital.email}:`, emailError);
+          }
+
+        } catch (error) {
+          console.error(`❌ Error adding hospital ${hospital.hospitalName}:`, error);
+          errorCount++;
+        }
+      }
+
+      toast.success(`Selected hospitals added! Success: ${successCount}, Errors: ${errorCount}`);
+      console.log(`Selected hospitals addition completed! Success: ${successCount}, Errors: ${errorCount}`);
+      
+      // Clear selection after successful addition
+      setSelectedHospitals([]);
+
+    } catch (error) {
+      console.error('Error adding selected hospitals:', error);
+      toast.error('Failed to add selected hospitals');
+    } finally {
+      setIsAddingSelected(false);
+    }
+  };
+
   const bulkAddHospitals = async () => {
     setIsBulkAdding(true);
     try {
@@ -224,10 +351,10 @@ const AdminDashboard: React.FC = () => {
 
           // Send welcome email
           try {
-            await sendEmailNotification(
-              hospital.email,
-              'Welcome to MedConnect Udupi',
-              `
+            await sendEmailNotification({
+              to: hospital.email,
+              subject: 'Welcome to MedConnect Udupi',
+              html: `
               <h2>Welcome to MedConnect Udupi!</h2>
               <p>Your hospital <strong>${hospital.hospitalName}</strong> has been successfully added to our platform.</p>
               
@@ -250,7 +377,7 @@ const AdminDashboard: React.FC = () => {
               
               <p>Best regards,<br>MedConnect Udupi Team</p>
               `
-            );
+            });
             console.log(`✅ Welcome email sent to ${hospital.email}`);
           } catch (emailError) {
             console.error(`❌ Failed to send email to ${hospital.email}:`, emailError);
@@ -570,6 +697,50 @@ const AdminDashboard: React.FC = () => {
     toast.info('Logged out successfully');
   };
 
+  // Helper functions for hospital selection
+  const handleSelectHospital = (hospitalId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedHospitals(prev => [...prev, hospitalId]);
+    } else {
+      setSelectedHospitals(prev => prev.filter(id => id !== hospitalId));
+    }
+  };
+
+  const handleSelectAllMangalore = () => {
+    const allMangaloreIds = MANGALORE_HOSPITALS.map(h => h.id);
+    setSelectedHospitals(prev => {
+      const filtered = prev.filter(id => !allMangaloreIds.includes(id));
+      return [...filtered, ...allMangaloreIds];
+    });
+  };
+
+  const handleDeselectAllMangalore = () => {
+    const allMangaloreIds = MANGALORE_HOSPITALS.map(h => h.id);
+    setSelectedHospitals(prev => prev.filter(id => !allMangaloreIds.includes(id)));
+  };
+
+  const handleSelectAllUdupi = () => {
+    const allUdupiIds = UDUPI_HOSPITALS.map(h => h.id);
+    setSelectedHospitals(prev => {
+      const filtered = prev.filter(id => !allUdupiIds.includes(id));
+      return [...filtered, ...allUdupiIds];
+    });
+  };
+
+  const handleDeselectAllUdupi = () => {
+    const allUdupiIds = UDUPI_HOSPITALS.map(h => h.id);
+    setSelectedHospitals(prev => prev.filter(id => !allUdupiIds.includes(id)));
+  };
+
+  const handleSelectAll = () => {
+    const allHospitalIds = ALL_HOSPITALS.map(h => h.id);
+    setSelectedHospitals(allHospitalIds);
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedHospitals([]);
+  };
+
   // Patient management functions
   const handleSuspendPatient = async (patient: Patient) => {
     setIsProcessing(true);
@@ -660,7 +831,7 @@ const AdminDashboard: React.FC = () => {
           <TabsTrigger value="applications">Hospital Applications</TabsTrigger>
           <TabsTrigger value="hospitals">Approved Hospitals</TabsTrigger>
           <TabsTrigger value="patients">Patient Management</TabsTrigger>
-          {/* <TabsTrigger value="bulk-add">Bulk Add Hospitals</TabsTrigger> */}
+          <TabsTrigger value="bulk-add">Bulk Add Hospitals</TabsTrigger>
         </TabsList>
 
         <TabsContent value="applications" className="space-y-4">
@@ -823,31 +994,89 @@ const AdminDashboard: React.FC = () => {
             <CardHeader>
               <CardTitle>Bulk Add Hospitals</CardTitle>
               <CardDescription>
-                Add all hospitals from Mangalore and Udupi regions to the system
+                Add hospitals from Mangalore and Udupi regions to the system - select individual hospitals or add all at once
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Selection Controls */}
+              <div className="bg-gray-50 p-4 rounded-lg border">
+                <div className="flex flex-wrap gap-4 items-center">
+                  <div className="text-sm font-medium">
+                    Selected: {selectedHospitals.length} / {ALL_HOSPITALS.length} hospitals
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleSelectAll}
+                      disabled={selectedHospitals.length === ALL_HOSPITALS.length}
+                    >
+                      Select All
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleDeselectAll}
+                      disabled={selectedHospitals.length === 0}
+                    >
+                      Deselect All
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Mangalore Hospitals */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-primary">Mangalore Hospitals ({MANGALORE_HOSPITALS.length})</h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-primary">
+                      Mangalore Hospitals ({MANGALORE_HOSPITALS.length})
+                    </h3>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleSelectAllMangalore}
+                        disabled={MANGALORE_HOSPITALS.every(h => selectedHospitals.includes(h.id))}
+                      >
+                        Select All
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleDeselectAllMangalore}
+                        disabled={!MANGALORE_HOSPITALS.some(h => selectedHospitals.includes(h.id))}
+                      >
+                        Deselect All
+                      </Button>
+                    </div>
+                  </div>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
                     {MANGALORE_HOSPITALS.map((hospital) => (
                       <div key={hospital.id} className="p-3 border rounded-lg bg-card">
-                        <h4 className="font-medium">{hospital.hospitalName}</h4>
-                        <p className="text-sm text-muted-foreground">{hospital.address}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge variant="outline" className="text-xs">
-                            {hospital.region}
-                          </Badge>
-                          <Badge variant="secondary" className="text-xs">
-                            {hospital.rating} ⭐
-                          </Badge>
-                          {hospital.emergencyAvailable && (
-                            <Badge variant="destructive" className="text-xs">
-                              Emergency
-                            </Badge>
-                          )}
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={selectedHospitals.includes(hospital.id)}
+                            onCheckedChange={(checked) => handleSelectHospital(hospital.id, checked as boolean)}
+                            className="mt-1"
+                          />
+                          <div className="flex-1">
+                            <h4 className="font-medium">{hospital.hospitalName}</h4>
+                            <p className="text-sm text-muted-foreground">{hospital.address}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge variant="outline" className="text-xs">
+                                {hospital.region}
+                              </Badge>
+                              <Badge variant="secondary" className="text-xs">
+                                {hospital.rating} ⭐
+                              </Badge>
+                              {hospital.emergencyAvailable && (
+                                <Badge variant="destructive" className="text-xs">
+                                  Emergency
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -856,24 +1085,55 @@ const AdminDashboard: React.FC = () => {
 
                 {/* Udupi Hospitals */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-primary">Udupi Hospitals ({UDUPI_HOSPITALS.length})</h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-primary">
+                      Udupi Hospitals ({UDUPI_HOSPITALS.length})
+                    </h3>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleSelectAllUdupi}
+                        disabled={UDUPI_HOSPITALS.every(h => selectedHospitals.includes(h.id))}
+                      >
+                        Select All
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleDeselectAllUdupi}
+                        disabled={!UDUPI_HOSPITALS.some(h => selectedHospitals.includes(h.id))}
+                      >
+                        Deselect All
+                      </Button>
+                    </div>
+                  </div>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
                     {UDUPI_HOSPITALS.map((hospital) => (
                       <div key={hospital.id} className="p-3 border rounded-lg bg-card">
-                        <h4 className="font-medium">{hospital.hospitalName}</h4>
-                        <p className="text-sm text-muted-foreground">{hospital.address}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge variant="outline" className="text-xs">
-                            {hospital.region}
-                          </Badge>
-                          <Badge variant="secondary" className="text-xs">
-                            {hospital.rating} ⭐
-                          </Badge>
-                          {hospital.emergencyAvailable && (
-                            <Badge variant="destructive" className="text-xs">
-                              Emergency
-                            </Badge>
-                          )}
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={selectedHospitals.includes(hospital.id)}
+                            onCheckedChange={(checked) => handleSelectHospital(hospital.id, checked as boolean)}
+                            className="mt-1"
+                          />
+                          <div className="flex-1">
+                            <h4 className="font-medium">{hospital.hospitalName}</h4>
+                            <p className="text-sm text-muted-foreground">{hospital.address}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge variant="outline" className="text-xs">
+                                {hospital.region}
+                              </Badge>
+                              <Badge variant="secondary" className="text-xs">
+                                {hospital.rating} ⭐
+                              </Badge>
+                              {hospital.emergencyAvailable && (
+                                <Badge variant="destructive" className="text-xs">
+                                  Emergency
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -884,25 +1144,44 @@ const AdminDashboard: React.FC = () => {
               <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                 <h4 className="font-semibold text-blue-800 mb-2">ℹ️ What this will do:</h4>
                 <ul className="text-blue-700 text-sm space-y-1">
-                  <li>• Create Firebase Auth accounts for all hospitals</li>
+                  <li>• Create Firebase Auth accounts for selected hospitals</li>
                   <li>• Add hospital records to Firestore with all details</li>
                   <li>• Send welcome emails with login credentials</li>
                   <li>• Skip hospitals that already exist</li>
-                  <li>• Total: {ALL_HOSPITALS.length} hospitals (8 Mangalore + 10 Udupi)</li>
+                  <li>• Total: {ALL_HOSPITALS.length} hospitals available (8 Mangalore + 10 Udupi)</li>
                 </ul>
               </div>
 
-              <div className="flex justify-center">
+              <div className="flex justify-center gap-4">
+                <Button
+                  onClick={addSelectedHospitals}
+                  disabled={isAddingSelected || selectedHospitals.length === 0}
+                  size="lg"
+                  className="px-8"
+                >
+                  {isAddingSelected ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Adding Selected Hospitals...
+                    </>
+                  ) : (
+                    <>
+                      Add Selected ({selectedHospitals.length}) Hospitals
+                    </>
+                  )}
+                </Button>
+                
                 <Button
                   onClick={bulkAddHospitals}
                   disabled={isBulkAdding}
                   size="lg"
+                  variant="outline"
                   className="px-8"
                 >
                   {isBulkAdding ? (
                     <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Adding Hospitals...
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                      Adding All Hospitals...
                     </>
                   ) : (
                     <>

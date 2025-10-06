@@ -13,6 +13,7 @@ import { toast } from '@/components/ui/sonner';
 import { db } from '@/lib/firebase';
 import { collection, query, onSnapshot, doc, addDoc, updateDoc, where, orderBy } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
+import { getHospitalQueues, updateQueueStatus, callNextPatient, type QueueEntry, type HospitalQueue } from '@/lib/queueService';
 
 interface HospitalData {
   hospitalId: string;
@@ -46,13 +47,28 @@ interface Booking {
   id: string;
   patientId: string;
   patientName: string;
+  patientEmail?: string;
+  patientPhone?: string;
   doctorName: string;
+  doctorId?: string;
   department: string;
   appointmentType: string;
   preferredDate: string;
+  preferredTime?: string;
   status: 'confirmed' | 'pending' | 'completed' | 'cancelled' | 'rescheduled';
   bookingDate: string;
   bookingId: string;
+  hospitalId?: string;
+  hospitalName?: string;
+  totalPrice?: number;
+  reason?: string;
+  urgency?: string;
+  notes?: string;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  queueNumber?: number;
+  queueId?: string;
+  estimatedWaitTime?: number;
 }
 
 const HospitalDashboard: React.FC = () => {
@@ -62,6 +78,11 @@ const HospitalDashboard: React.FC = () => {
   const [isAddDoctorOpen, setIsAddDoctorOpen] = useState(false);
   const [isEditDoctorOpen, setIsEditDoctorOpen] = useState(false);
   const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [isBookingDetailsOpen, setIsBookingDetailsOpen] = useState(false);
+  const [isQueuePopupOpen, setIsQueuePopupOpen] = useState(false);
+  const [hospitalQueues, setHospitalQueues] = useState<HospitalQueue[]>([]);
+  const [currentTime, setCurrentTime] = useState(new Date());
   const [newDoctor, setNewDoctor] = useState<Partial<Doctor>>({
     name: '',
     specialization: '',
@@ -76,6 +97,15 @@ const HospitalDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Update clock every second
+    const clockInterval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => clearInterval(clockInterval);
+  }, []);
 
   useEffect(() => {
     // Check if hospital is logged in
@@ -176,15 +206,20 @@ const HospitalDashboard: React.FC = () => {
     // Listen to bookings for this hospital
     const bookingsQuery = query(
       collection(db, 'bookings'),
-      where('hospitalId', '==', authData.hospitalId),
-      orderBy('bookingDate', 'desc')
+      where('hospitalId', '==', authData.hospitalId)
     );
     const unsubscribeBookings = onSnapshot(bookingsQuery, (snapshot) => {
       const books = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Booking[];
-      setBookings(books);
+      
+      // Sort by booking date on the client side
+      const sortedBookings = books.sort((a, b) => 
+        new Date(b.bookingDate).getTime() - new Date(a.bookingDate).getTime()
+      );
+      
+      setBookings(sortedBookings);
     });
 
     return () => {
@@ -296,10 +331,85 @@ const HospitalDashboard: React.FC = () => {
     }
   };
 
+  const handleViewBookingDetails = (booking: Booking) => {
+    setSelectedBooking(booking);
+    setIsBookingDetailsOpen(true);
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('hospital_auth');
     navigate('/hospital-login');
     toast.info('Logged out successfully');
+  };
+
+  const handleViewQueue = () => {
+    if (!hospitalData) return;
+    
+    // Listen to hospital queues
+    const unsubscribe = getHospitalQueues(hospitalData.hospitalId, (queues) => {
+      setHospitalQueues(queues);
+    });
+    
+    setIsQueuePopupOpen(true);
+    
+    // Store unsubscribe function for cleanup
+    (window as any).queueUnsubscribe = unsubscribe;
+  };
+
+  const handleCallNextPatient = async (department: string) => {
+    if (!hospitalData) return;
+    
+    try {
+      const nextPatient = await callNextPatient(hospitalData.hospitalId, department);
+      if (nextPatient) {
+        toast.success(`Called patient ${nextPatient.patientName} (Queue #${nextPatient.queueNumber})`);
+      } else {
+        toast.info('No patients waiting in queue');
+      }
+    } catch (error) {
+      console.error('Error calling next patient:', error);
+      toast.error('Failed to call next patient');
+    }
+  };
+
+  const handleUpdateQueueStatus = async (queueId: string, status: QueueEntry['status']) => {
+    try {
+      await updateQueueStatus(queueId, status);
+      toast.success('Queue status updated successfully');
+    } catch (error) {
+      console.error('Error updating queue status:', error);
+      toast.error('Failed to update queue status');
+    }
+  };
+
+  const getQueueStatusBadge = (status: string) => {
+    switch (status) {
+      case 'waiting':
+        return <Badge variant="secondary">Waiting</Badge>;
+      case 'called':
+        return <Badge variant="default">Called</Badge>;
+      case 'in_progress':
+        return <Badge variant="outline">In Progress</Badge>;
+      case 'completed':
+        return <Badge variant="outline">Completed</Badge>;
+      case 'cancelled':
+        return <Badge variant="destructive">Cancelled</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const getPriorityBadge = (priority: string) => {
+    switch (priority) {
+      case 'urgent':
+        return <Badge variant="destructive">Urgent</Badge>;
+      case 'high':
+        return <Badge variant="default">High</Badge>;
+      case 'normal':
+        return <Badge variant="secondary">Normal</Badge>;
+      default:
+        return <Badge variant="outline">{priority}</Badge>;
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -359,6 +469,8 @@ const HospitalDashboard: React.FC = () => {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="doctors">Doctors</TabsTrigger>
           <TabsTrigger value="bookings">Bookings</TabsTrigger>
+          <TabsTrigger value="paid-bookings">Paid Bookings</TabsTrigger>
+          <TabsTrigger value="queue">Queue Management</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
@@ -638,21 +750,36 @@ const HospitalDashboard: React.FC = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Booking ID</TableHead>
                     <TableHead>Patient</TableHead>
                     <TableHead>Doctor</TableHead>
                     <TableHead>Department</TableHead>
-                    <TableHead>Date</TableHead>
+                    <TableHead>Date & Time</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Amount</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {bookings.map((booking) => (
-                    <TableRow key={booking.id}>
+                    <TableRow key={booking.id} className="cursor-pointer hover:bg-gray-50" onClick={() => handleViewBookingDetails(booking)}>
+                      <TableCell className="font-mono text-xs">{booking.bookingId || booking.id}</TableCell>
                       <TableCell className="font-medium">{booking.patientName}</TableCell>
                       <TableCell>{booking.doctorName}</TableCell>
-                      <TableCell>{booking.department}</TableCell>
-                      <TableCell>{booking.preferredDate}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{booking.department}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          <div>{new Date(booking.preferredDate).toLocaleDateString()}</div>
+                          <div className="text-xs text-muted-foreground">{booking.preferredTime || 'Time not set'}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{booking.appointmentType || 'Regular'}</Badge>
+                      </TableCell>
+                      <TableCell className="font-medium">₹{booking.totalPrice || 0}</TableCell>
                       <TableCell>{getStatusBadge(booking.status)}</TableCell>
                       <TableCell>
                         <div className="flex space-x-2">
@@ -687,6 +814,193 @@ const HospitalDashboard: React.FC = () => {
                   ))}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="paid-bookings" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                💰 Paid Bookings
+                <Badge variant="default" className="bg-green-600">
+                  {bookings.filter(b => b.paymentStatus === 'completed' || b.status === 'completed').length}
+                </Badge>
+              </CardTitle>
+              <CardDescription>View all paid and completed bookings with payment details</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Total Paid Bookings</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-600">
+                      {bookings.filter(b => b.paymentStatus === 'completed' || b.status === 'completed').length}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Completed payments</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-600">
+                      ₹{bookings
+                        .filter(b => b.paymentStatus === 'completed' || b.status === 'completed')
+                        .reduce((sum, b) => sum + (b.totalPrice || 0), 0)
+                        .toLocaleString()}
+                    </div>
+                    <p className="text-xs text-muted-foreground">From paid bookings</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Pending Payments</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-orange-600">
+                      {bookings.filter(b => b.paymentStatus !== 'completed' && b.status !== 'completed').length}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Awaiting payment</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Booking ID</TableHead>
+                    <TableHead>Patient</TableHead>
+                    <TableHead>Doctor</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Date & Time</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Payment Method</TableHead>
+                    <TableHead>Payment Status</TableHead>
+                    <TableHead>Booking Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bookings
+                    .filter(b => b.paymentStatus === 'completed' || b.status === 'completed')
+                    .sort((a, b) => new Date(b.bookingDate).getTime() - new Date(a.bookingDate).getTime())
+                    .map((booking) => (
+                    <TableRow key={booking.id} className="cursor-pointer hover:bg-gray-50" onClick={() => handleViewBookingDetails(booking)}>
+                      <TableCell className="font-mono text-xs">{booking.bookingId || booking.id}</TableCell>
+                      <TableCell className="font-medium">{booking.patientName}</TableCell>
+                      <TableCell>{booking.doctorName}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{booking.department}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          <div>{new Date(booking.preferredDate).toLocaleDateString()}</div>
+                          <div className="text-xs text-muted-foreground">{booking.preferredTime || 'Time not set'}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-medium text-green-600">₹{booking.totalPrice || 0}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">
+                          {booking.paymentMethod === 'razorpay' ? '💳 Razorpay' :
+                           booking.paymentMethod === 'upi' ? '📱 UPI' :
+                           booking.paymentMethod === 'netbanking' ? '🏦 Net Banking' :
+                           booking.paymentMethod === 'wallet' ? '💼 Digital Wallet' :
+                           booking.paymentMethod || 'Not specified'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={booking.paymentStatus === 'completed' ? 'default' : 'secondary'}>
+                          {booking.paymentStatus === 'completed' ? '✅ Paid' : booking.paymentStatus || 'Pending'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{getStatusBadge(booking.status)}</TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleViewBookingDetails(booking)}
+                          >
+                            View Details
+                          </Button>
+                          {booking.status === 'confirmed' && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleUpdateBookingStatus(booking.id, 'completed')}
+                            >
+                              Complete
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {bookings.filter(b => b.paymentStatus === 'completed' || b.status === 'completed').length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                        No paid bookings found. Payments will appear here once completed.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="queue" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Queue Management</CardTitle>
+              <CardDescription>Manage patient queues and monitor queue status</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Total Patients in Queue</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {hospitalQueues.reduce((sum, queue) => sum + queue.currentQueue.length, 0)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Across all departments</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Active Departments</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{hospitalQueues.length}</div>
+                    <p className="text-xs text-muted-foreground">Departments with queues</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Average Wait Time</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {hospitalQueues.length > 0 
+                        ? Math.round(hospitalQueues.reduce((sum, queue) => sum + queue.averageWaitTime, 0) / hospitalQueues.length)
+                        : 0
+                      } min
+                    </div>
+                    <p className="text-xs text-muted-foreground">Estimated wait time</p>
+                  </CardContent>
+                </Card>
+              </div>
+              
+              <div className="flex justify-center">
+                <Button onClick={handleViewQueue} size="lg" className="bg-blue-600 hover:bg-blue-700">
+                  📋 View Queue Details
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -1014,6 +1328,294 @@ const HospitalDashboard: React.FC = () => {
               disabled={isLoading}
             >
               {isLoading ? 'Updating...' : 'Update Doctor'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Booking Details Modal */}
+      <Dialog open={isBookingDetailsOpen} onOpenChange={setIsBookingDetailsOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Booking Details</DialogTitle>
+            <DialogDescription>Complete information about this patient booking</DialogDescription>
+          </DialogHeader>
+          {selectedBooking && (
+            <div className="space-y-6">
+              {/* Booking Overview */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-blue-900 mb-2">📋 Booking Information</h4>
+                  <div className="space-y-2 text-sm">
+                    <div><strong>Booking ID:</strong> <span className="font-mono">{selectedBooking.bookingId}</span></div>
+                    <div><strong>Status:</strong> {getStatusBadge(selectedBooking.status)}</div>
+                    <div><strong>Booking Date:</strong> {new Date(selectedBooking.bookingDate).toLocaleString()}</div>
+                    <div><strong>Queue Number:</strong> {selectedBooking.queueNumber || 'Not assigned'}</div>
+                  </div>
+                </div>
+                
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-green-900 mb-2">💰 Payment Information</h4>
+                  <div className="space-y-2 text-sm">
+                    <div><strong>Total Amount:</strong> ₹{selectedBooking.totalPrice || 0}</div>
+                    <div><strong>Payment Method:</strong> {selectedBooking.paymentMethod || 'Not specified'}</div>
+                    <div><strong>Payment Status:</strong> 
+                      <Badge variant={selectedBooking.paymentStatus === 'completed' ? 'default' : 'secondary'} className="ml-2">
+                        {selectedBooking.paymentStatus || 'Unknown'}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Patient Information */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-medium text-gray-900 mb-3">👤 Patient Information</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <div><strong>Name:</strong> {selectedBooking.patientName}</div>
+                    <div><strong>Email:</strong> {selectedBooking.patientEmail || 'Not provided'}</div>
+                  </div>
+                  <div>
+                    <div><strong>Phone:</strong> {selectedBooking.patientPhone || 'Not provided'}</div>
+                    <div><strong>Patient ID:</strong> <span className="font-mono text-xs">{selectedBooking.patientId}</span></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Appointment Details */}
+              <div className="bg-purple-50 p-4 rounded-lg">
+                <h4 className="font-medium text-purple-900 mb-3">🏥 Appointment Details</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <div><strong>Doctor:</strong> {selectedBooking.doctorName}</div>
+                    <div><strong>Department:</strong> {selectedBooking.department}</div>
+                    <div><strong>Type:</strong> {selectedBooking.appointmentType || 'Regular'}</div>
+                  </div>
+                  <div>
+                    <div><strong>Date:</strong> {new Date(selectedBooking.preferredDate).toLocaleDateString()}</div>
+                    <div><strong>Time:</strong> {selectedBooking.preferredTime || 'Not specified'}</div>
+                    <div><strong>Urgency:</strong> {selectedBooking.urgency || 'Normal'}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Additional Information */}
+              {(selectedBooking.reason || selectedBooking.notes) && (
+                <div className="bg-yellow-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-yellow-900 mb-3">📝 Additional Information</h4>
+                  <div className="space-y-2 text-sm">
+                    {selectedBooking.reason && (
+                      <div>
+                        <strong>Reason for Visit:</strong>
+                        <p className="mt-1 text-gray-700">{selectedBooking.reason}</p>
+                      </div>
+                    )}
+                    {selectedBooking.notes && (
+                      <div>
+                        <strong>Notes:</strong>
+                        <p className="mt-1 text-gray-700">{selectedBooking.notes}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setIsBookingDetailsOpen(false)}>
+                  Close
+                </Button>
+                {selectedBooking.status === 'pending' && (
+                  <>
+                    <Button onClick={() => {
+                      handleUpdateBookingStatus(selectedBooking.id, 'confirmed');
+                      setIsBookingDetailsOpen(false);
+                    }}>
+                      Confirm Booking
+                    </Button>
+                    <Button variant="destructive" onClick={() => {
+                      handleUpdateBookingStatus(selectedBooking.id, 'cancelled');
+                      setIsBookingDetailsOpen(false);
+                    }}>
+                      Cancel Booking
+                    </Button>
+                  </>
+                )}
+                {selectedBooking.status === 'confirmed' && (
+                  <Button onClick={() => {
+                    handleUpdateBookingStatus(selectedBooking.id, 'completed');
+                    setIsBookingDetailsOpen(false);
+                  }}>
+                    Mark as Completed
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Queue Management Popup */}
+      <Dialog open={isQueuePopupOpen} onOpenChange={(open) => {
+        setIsQueuePopupOpen(open);
+        if (!open && (window as any).queueUnsubscribe) {
+          (window as any).queueUnsubscribe();
+        }
+      }}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span>Queue Management - {hospitalData?.hospitalName}</span>
+              <div className="text-2xl font-mono bg-gray-100 px-3 py-1 rounded">
+                {currentTime.toLocaleTimeString('en-US', { 
+                  hour12: true, 
+                  hour: '2-digit', 
+                  minute: '2-digit', 
+                  second: '2-digit' 
+                })}
+              </div>
+            </DialogTitle>
+            <DialogDescription>
+              Real-time queue management for all departments
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            {hospitalQueues.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="text-6xl mb-4">📋</div>
+                <h3 className="text-lg font-medium mb-2">No Active Queues</h3>
+                <p className="text-muted-foreground">No patients are currently waiting in any department queues.</p>
+              </div>
+            ) : (
+              hospitalQueues.map((queue) => (
+                <Card key={queue.department}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-lg">{queue.department}</CardTitle>
+                        <CardDescription>
+                          {queue.currentQueue.length} patients in queue | Avg wait: {queue.averageWaitTime} min
+                        </CardDescription>
+                      </div>
+                      <Button 
+                        onClick={() => handleCallNextPatient(queue.department)}
+                        disabled={queue.currentQueue.length === 0}
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        📢 Call Next
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {queue.currentQueue.length === 0 ? (
+                      <div className="text-center py-4 text-muted-foreground">
+                        No patients waiting in this department
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {/* Sort queue by priority and queue number */}
+                        {queue.currentQueue
+                          .sort((a, b) => {
+                            // Urgent patients first
+                            if (a.priority === 'urgent' && b.priority !== 'urgent') return -1;
+                            if (b.priority === 'urgent' && a.priority !== 'urgent') return 1;
+                            // High priority next
+                            if (a.priority === 'high' && b.priority === 'normal') return -1;
+                            if (b.priority === 'high' && a.priority === 'normal') return 1;
+                            // Then by queue number (first come, first serve)
+                            return a.queueNumber - b.queueNumber;
+                          })
+                          .map((patient, index) => {
+                            const isCurrent = patient.status === 'called' || patient.status === 'in_progress';
+                            const isNext = index === 0 && patient.status === 'waiting';
+                            const isUpcoming = index === 1 && patient.status === 'waiting';
+                            
+                            return (
+                              <div
+                                key={patient.id}
+                                className={`p-4 rounded-lg border transition-all ${
+                                  isCurrent 
+                                    ? 'bg-green-50 border-green-200 ring-2 ring-green-300' 
+                                    : isNext 
+                                    ? 'bg-blue-50 border-blue-200' 
+                                    : isUpcoming
+                                    ? 'bg-yellow-50 border-yellow-200'
+                                    : 'bg-gray-50 border-gray-200'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-4">
+                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${
+                                      isCurrent ? 'bg-green-500' : isNext ? 'bg-blue-500' : isUpcoming ? 'bg-yellow-500' : 'bg-gray-500'
+                                    }`}>
+                                      {patient.queueNumber}
+                                    </div>
+                                    <div>
+                                      <div className="flex items-center gap-2">
+                                        <h4 className="font-medium">{patient.patientName}</h4>
+                                        {getPriorityBadge(patient.priority)}
+                                        {isCurrent && <Badge variant="default">Ongoing</Badge>}
+                                        {isNext && <Badge variant="default">Up Next</Badge>}
+                                        {isUpcoming && <Badge variant="secondary">Be Ready</Badge>}
+                                      </div>
+                                      <p className="text-sm text-muted-foreground">
+                                        Booking ID: {patient.bookingId}
+                                      </p>
+                                      <p className="text-sm text-muted-foreground">
+                                        Doctor: {patient.doctorName || 'Not assigned'}
+                                      </p>
+                                      <p className="text-sm text-muted-foreground">
+                                        Type: {patient.appointmentType} | Est. wait: {patient.estimatedWaitTime} min
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {getQueueStatusBadge(patient.status)}
+                                    {patient.status === 'waiting' && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleUpdateQueueStatus(patient.id, 'called')}
+                                      >
+                                        Call
+                                      </Button>
+                                    )}
+                                    {patient.status === 'called' && (
+                                      <Button
+                                        size="sm"
+                                        onClick={() => handleUpdateQueueStatus(patient.id, 'in_progress')}
+                                      >
+                                        Start
+                                      </Button>
+                                    )}
+                                    {(patient.status === 'called' || patient.status === 'in_progress') && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleUpdateQueueStatus(patient.id, 'completed')}
+                                      >
+                                        Complete
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsQueuePopupOpen(false)}>
+              Close Queue Management
             </Button>
           </DialogFooter>
         </DialogContent>
