@@ -222,33 +222,35 @@ const QueueStatus = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
       <PatientNavigation />
-      <div className="container mx-auto px-4 py-8 md:ml-72">
+      <div className="container mx-auto px-4 py-6 md:py-8 md:ml-72">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-4 mb-4">
+        <div className="mb-6 md:mb-8">
+          <div className="flex flex-col gap-4 mb-6">
             <Button 
               variant="outline" 
               onClick={() => navigate('/patient-dashboard')}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 self-start"
             >
               <ArrowLeft className="w-4 h-4" />
               Back to Dashboard
             </Button>
-            <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-green-600 rounded-full flex items-center justify-center">
-              <Users className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-                Queue Status
-              </h1>
-              <p className="text-muted-foreground">Check current queue status and wait times</p>
+            <div className="flex items-center gap-3 md:gap-4">
+              <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-r from-blue-600 to-green-600 rounded-full flex items-center justify-center">
+                <Users className="w-5 h-5 md:w-6 md:h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl md:text-4xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                  Queue Status
+                </h1>
+                <p className="text-sm md:text-base text-muted-foreground">Check current queue status and wait times</p>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
           {/* Left Column - Filters */}
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 order-2 lg:order-1">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -368,7 +370,7 @@ const QueueStatus = () => {
           </div>
 
           {/* Right Column - Queue Data */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 order-1 lg:order-2">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -398,32 +400,32 @@ const QueueStatus = () => {
                 ) : (
                   <div className="space-y-4">
                     {/* Queue Statistics */}
-                    <div className="grid md:grid-cols-4 gap-4 mb-6">
-                      <div className="text-center p-4 bg-blue-50 rounded-lg">
-                        <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-                        <p className="text-2xl font-bold text-blue-600">{queueData.length}</p>
-                        <p className="text-sm text-blue-600">Total in Queue</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
+                      <div className="text-center p-3 md:p-4 bg-blue-50 rounded-lg hover:shadow-md transition-shadow">
+                        <Users className="w-6 h-6 md:w-8 md:h-8 text-blue-600 mx-auto mb-2" />
+                        <p className="text-lg md:text-2xl font-bold text-blue-600">{queueData.length}</p>
+                        <p className="text-xs md:text-sm text-blue-600">Total in Queue</p>
                       </div>
-                      <div className="text-center p-4 bg-yellow-50 rounded-lg">
-                        <Clock className="w-8 h-8 text-yellow-600 mx-auto mb-2" />
-                        <p className="text-2xl font-bold text-yellow-600">
+                      <div className="text-center p-3 md:p-4 bg-yellow-50 rounded-lg hover:shadow-md transition-shadow">
+                        <Clock className="w-6 h-6 md:w-8 md:h-8 text-yellow-600 mx-auto mb-2" />
+                        <p className="text-lg md:text-2xl font-bold text-yellow-600">
                           {queueData.filter(q => q.status === 'waiting').length}
                         </p>
-                        <p className="text-sm text-yellow-600">Waiting</p>
+                        <p className="text-xs md:text-sm text-yellow-600">Waiting</p>
                       </div>
-                      <div className="text-center p-4 bg-green-50 rounded-lg">
-                        <Activity className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                        <p className="text-2xl font-bold text-green-600">
+                      <div className="text-center p-3 md:p-4 bg-green-50 rounded-lg hover:shadow-md transition-shadow">
+                        <Activity className="w-6 h-6 md:w-8 md:h-8 text-green-600 mx-auto mb-2" />
+                        <p className="text-lg md:text-2xl font-bold text-green-600">
                           {queueData.filter(q => q.status === 'in-progress').length}
                         </p>
-                        <p className="text-sm text-green-600">In Progress</p>
+                        <p className="text-xs md:text-sm text-green-600">In Progress</p>
                       </div>
-                      <div className="text-center p-4 bg-red-50 rounded-lg">
-                        <Timer className="w-8 h-8 text-red-600 mx-auto mb-2" />
-                        <p className="text-2xl font-bold text-red-600">
+                      <div className="text-center p-3 md:p-4 bg-red-50 rounded-lg hover:shadow-md transition-shadow">
+                        <Timer className="w-6 h-6 md:w-8 md:h-8 text-red-600 mx-auto mb-2" />
+                        <p className="text-lg md:text-2xl font-bold text-red-600">
                           {Math.max(...queueData.map(q => calculateWaitTime(q)))}
                         </p>
-                        <p className="text-sm text-red-600">Max Wait (min)</p>
+                        <p className="text-xs md:text-sm text-red-600">Max Wait (min)</p>
                       </div>
                     </div>
 
@@ -432,14 +434,14 @@ const QueueStatus = () => {
                       {queueData
                         .sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0))
                         .map((entry, index) => (
-                        <Card key={entry.id} className={`transition-all ${
+                        <Card key={entry.id} className={`transition-all hover:shadow-md ${
                           entry.status === 'in-progress' ? 'ring-2 ring-green-500 bg-green-50' : ''
                         }`}>
                           <CardContent className="p-4">
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-3 mb-2">
-                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center text-white font-bold ${
                                     entry.queueNumber === 1 ? 'bg-green-500' :
                                     entry.queueNumber === 2 ? 'bg-blue-500' :
                                     entry.queueNumber === 3 ? 'bg-orange-500' :
@@ -448,35 +450,35 @@ const QueueStatus = () => {
                                     {entry.queueNumber || index + 1}
                                   </div>
                                   <div>
-                                    <h3 className="font-semibold">{entry.patientName}</h3>
-                                    <p className="text-sm text-muted-foreground">
+                                    <h3 className="font-semibold text-sm md:text-base">{entry.patientName}</h3>
+                                    <p className="text-xs md:text-sm text-muted-foreground">
                                       {entry.appointmentType} • {entry.doctorName || 'Any Doctor'}
                                     </p>
                                   </div>
                                 </div>
                                 
-                                <div className="flex items-center gap-4 text-sm">
-                                  <div className="flex items-center gap-1">
-                                    <Clock className="w-4 h-4 text-muted-foreground" />
-                                    <span>Checked in: {formatTime(entry.checkedInAt)}</span>
-                                  </div>
-                                  <div className="flex items-center gap-1">
-                                    <Timer className="w-4 h-4 text-muted-foreground" />
-                                    <span>Wait: {calculateWaitTime(entry)} min</span>
-                                  </div>
+                                <div className="flex flex-col gap-1 items-end">
+                                  <Badge className={`${getPriorityColor(entry.priority)} text-xs`}>
+                                    {entry.priority}
+                                  </Badge>
+                                  <Badge className={`${getStatusColor(entry.status)} text-xs`}>
+                                    <div className="flex items-center gap-1">
+                                      {getStatusIcon(entry.status)}
+                                      <span className="hidden sm:inline">{entry.status}</span>
+                                    </div>
+                                  </Badge>
                                 </div>
                               </div>
                               
-                              <div className="flex flex-col gap-2 items-end">
-                                <Badge className={getPriorityColor(entry.priority)}>
-                                  {entry.priority}
-                                </Badge>
-                                <Badge className={getStatusColor(entry.status)}>
-                                  <div className="flex items-center gap-1">
-                                    {getStatusIcon(entry.status)}
-                                    {entry.status}
-                                  </div>
-                                </Badge>
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs md:text-sm">
+                                <div className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3 md:w-4 md:h-4 text-muted-foreground flex-shrink-0" />
+                                  <span>Checked in: {formatTime(entry.checkedInAt)}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Timer className="w-3 h-3 md:w-4 md:h-4 text-muted-foreground flex-shrink-0" />
+                                  <span>Wait: {calculateWaitTime(entry)} min</span>
+                                </div>
                               </div>
                             </div>
                           </CardContent>

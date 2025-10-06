@@ -65,7 +65,7 @@ const PatientNavigation = () => {
     <>
       {/* Desktop Navigation */}
       <div className="hidden md:block fixed top-4 left-4 z-50">
-        <Card className="w-64 shadow-lg">
+        <Card className="w-64 shadow-elevated border-0">
           <CardContent className="p-4">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-green-600 rounded-full flex items-center justify-center">
@@ -77,15 +77,17 @@ const PatientNavigation = () => {
               </div>
             </div>
 
-            <nav className="space-y-2">
+            <nav className="space-y-1">
               {navigationItems.map((item) => {
                 const Icon = item.icon;
                 return (
                   <Button
                     key={item.path}
                     variant={isActive(item.path) ? "default" : "ghost"}
-                    className={`w-full justify-start h-auto p-3 ${
-                      isActive(item.path) ? "bg-primary text-primary-foreground" : "hover:bg-gray-100"
+                    className={`w-full justify-start h-auto p-3 transition-all duration-200 ${
+                      isActive(item.path) 
+                        ? "bg-gradient-to-r from-blue-600 to-green-600 text-white shadow-md" 
+                        : "hover:bg-gray-100 hover:shadow-sm"
                     }`}
                     onClick={() => {
                       navigate(item.path);
@@ -93,10 +95,14 @@ const PatientNavigation = () => {
                     }}
                   >
                     <div className="flex items-center gap-3">
-                      <Icon className="w-5 h-5" />
+                      <Icon className={`w-5 h-5 ${isActive(item.path) ? "text-white" : "text-muted-foreground"}`} />
                       <div className="text-left">
-                        <p className="font-medium text-sm">{item.label}</p>
-                        <p className="text-xs opacity-75">{item.description}</p>
+                        <p className={`font-medium text-sm ${isActive(item.path) ? "text-white" : ""}`}>
+                          {item.label}
+                        </p>
+                        <p className={`text-xs ${isActive(item.path) ? "text-white/80" : "text-muted-foreground"}`}>
+                          {item.description}
+                        </p>
                       </div>
                     </div>
                   </Button>
@@ -105,23 +111,23 @@ const PatientNavigation = () => {
             </nav>
 
             <div className="mt-6 pt-4 border-t">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-                  <span className="text-sm font-medium">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-green-500 rounded-full flex items-center justify-center">
+                  <span className="text-sm font-medium text-white">
                     {currentUser?.email?.charAt(0).toUpperCase() || 'U'}
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">
-                    {currentUser?.email || 'User'}
+                    {currentUser?.displayName || currentUser?.email || 'User'}
                   </p>
-                  <Badge variant="outline" className="text-xs">Patient</Badge>
+                  <Badge variant="outline" className="text-xs mt-1">Patient</Badge>
                 </div>
               </div>
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full"
+                className="w-full hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
                 onClick={handleLogout}
               >
                 <LogOut className="w-4 h-4 mr-2" />
@@ -133,35 +139,41 @@ const PatientNavigation = () => {
       </div>
 
       {/* Mobile Navigation */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b shadow-sm">
+      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-b shadow-sm">
         <div className="flex items-center justify-between p-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-green-600 rounded-full flex items-center justify-center">
               <Heart className="w-4 h-4 text-white" />
             </div>
-            <span className="font-semibold">MedConnect</span>
+            <div>
+              <span className="font-semibold text-sm">MedConnect</span>
+              <p className="text-xs text-muted-foreground">Patient Portal</p>
+            </div>
           </div>
           
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="hover:bg-gray-100"
           >
             {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </Button>
         </div>
 
         {isMobileMenuOpen && (
-          <div className="border-t bg-white">
-            <nav className="p-4 space-y-2">
+          <div className="border-t bg-white/95 backdrop-blur-sm">
+            <nav className="p-4 space-y-1">
               {navigationItems.map((item) => {
                 const Icon = item.icon;
                 return (
                   <Button
                     key={item.path}
                     variant={isActive(item.path) ? "default" : "ghost"}
-                    className={`w-full justify-start h-auto p-3 ${
-                      isActive(item.path) ? "bg-primary text-primary-foreground" : "hover:bg-gray-100"
+                    className={`w-full justify-start h-auto p-3 rounded-lg transition-all duration-200 ${
+                      isActive(item.path) 
+                        ? "bg-gradient-to-r from-blue-600 to-green-600 text-white shadow-md" 
+                        : "hover:bg-gray-100 hover:shadow-sm"
                     }`}
                     onClick={() => {
                       navigate(item.path);
@@ -169,10 +181,14 @@ const PatientNavigation = () => {
                     }}
                   >
                     <div className="flex items-center gap-3">
-                      <Icon className="w-5 h-5" />
+                      <Icon className={`w-5 h-5 ${isActive(item.path) ? "text-white" : "text-muted-foreground"}`} />
                       <div className="text-left">
-                        <p className="font-medium text-sm">{item.label}</p>
-                        <p className="text-xs opacity-75">{item.description}</p>
+                        <p className={`font-medium text-sm ${isActive(item.path) ? "text-white" : ""}`}>
+                          {item.label}
+                        </p>
+                        <p className={`text-xs ${isActive(item.path) ? "text-white/80" : "text-muted-foreground"}`}>
+                          {item.description}
+                        </p>
                       </div>
                     </div>
                   </Button>
@@ -180,23 +196,23 @@ const PatientNavigation = () => {
               })}
               
               <div className="pt-4 border-t mt-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-                    <span className="text-sm font-medium">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-green-500 rounded-full flex items-center justify-center">
+                    <span className="text-sm font-medium text-white">
                       {currentUser?.email?.charAt(0).toUpperCase() || 'U'}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">
-                      {currentUser?.email || 'User'}
+                      {currentUser?.displayName || currentUser?.email || 'User'}
                     </p>
-                    <Badge variant="outline" className="text-xs">Patient</Badge>
+                    <Badge variant="outline" className="text-xs mt-1">Patient</Badge>
                   </div>
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full"
+                  className="w-full hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
                   onClick={handleLogout}
                 >
                   <LogOut className="w-4 h-4 mr-2" />

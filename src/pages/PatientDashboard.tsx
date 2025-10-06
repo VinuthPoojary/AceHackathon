@@ -208,57 +208,57 @@ const PatientDashboard = () => {
         </div>
 
         {/* Quick Stats */}
-        <div className="grid md:grid-cols-4 gap-4 mb-8">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                  <Calendar className="w-5 h-5 text-blue-600" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="p-3 md:p-4">
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                  <Calendar className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-blue-600">{upcomingBookings.length}</p>
-                  <p className="text-sm text-muted-foreground">Upcoming</p>
+                  <p className="text-lg md:text-2xl font-bold text-blue-600">{upcomingBookings.length}</p>
+                  <p className="text-xs md:text-sm text-muted-foreground">Upcoming</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="p-3 md:p-4">
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-green-100 rounded-full flex items-center justify-center">
+                  <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-green-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-green-600">{pastBookings.length}</p>
-                  <p className="text-sm text-muted-foreground">Completed</p>
+                  <p className="text-lg md:text-2xl font-bold text-green-600">{pastBookings.length}</p>
+                  <p className="text-xs md:text-sm text-muted-foreground">Completed</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
-                  <AlertCircle className="w-5 h-5 text-orange-600" />
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="p-3 md:p-4">
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                  <AlertCircle className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-orange-600">
+                  <p className="text-lg md:text-2xl font-bold text-orange-600">
                     {bookings.filter(b => b.urgency === 'urgent' || b.urgency === 'high').length}
                   </p>
-                  <p className="text-sm text-muted-foreground">Urgent</p>
+                  <p className="text-xs md:text-sm text-muted-foreground">Urgent</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                  <FileText className="w-5 h-5 text-purple-600" />
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="p-3 md:p-4">
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                  <FileText className="w-4 h-4 md:w-5 md:h-5 text-purple-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-purple-600">{bookings.length}</p>
-                  <p className="text-sm text-muted-foreground">Total</p>
+                  <p className="text-lg md:text-2xl font-bold text-purple-600">{bookings.length}</p>
+                  <p className="text-xs md:text-sm text-muted-foreground">Total</p>
                 </div>
               </div>
             </CardContent>
@@ -267,9 +267,15 @@ const PatientDashboard = () => {
 
         {/* Appointments List */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger value="upcoming">Upcoming Appointments</TabsTrigger>
-            <TabsTrigger value="past">Past Appointments</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 mb-4 md:mb-6 h-auto">
+            <TabsTrigger value="upcoming" className="text-xs md:text-sm py-2 md:py-3">
+              <span className="hidden sm:inline">Upcoming Appointments</span>
+              <span className="sm:hidden">Upcoming</span>
+            </TabsTrigger>
+            <TabsTrigger value="past" className="text-xs md:text-sm py-2 md:py-3">
+              <span className="hidden sm:inline">Past Appointments</span>
+              <span className="sm:hidden">Past</span>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="upcoming">
@@ -300,89 +306,101 @@ const PatientDashboard = () => {
                   <div className="space-y-4">
                     {upcomingBookings.map((booking) => (
                       <Card key={booking.id} className="hover:shadow-md transition-shadow">
-                        <CardContent className="p-6">
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-3">
-                                <h3 className="text-xl font-semibold">{booking.doctorName}</h3>
-                                <Badge className={getStatusColor(booking.status)}>
-                                  {booking.status}
-                                </Badge>
-                                <Badge className={getUrgencyColor(booking.urgency)}>
-                                  {booking.urgency}
-                                </Badge>
+                        <CardContent className="p-4 md:p-6">
+                          <div className="space-y-4">
+                            {/* Header */}
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                              <div className="flex-1">
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+                                  <h3 className="text-lg md:text-xl font-semibold">{booking.doctorName}</h3>
+                                  <div className="flex flex-wrap gap-2">
+                                    <Badge className={getStatusColor(booking.status)}>
+                                      {booking.status}
+                                    </Badge>
+                                    <Badge className={getUrgencyColor(booking.urgency)}>
+                                      {booking.urgency}
+                                    </Badge>
+                                  </div>
+                                </div>
                               </div>
                               
-                              <div className="grid md:grid-cols-2 gap-4 text-sm">
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-2">
-                                    <MapPin className="w-4 h-4 text-muted-foreground" />
-                                    <span>{booking.hospitalName}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <User className="w-4 h-4 text-muted-foreground" />
-                                    <span>{booking.department}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Calendar className="w-4 h-4 text-muted-foreground" />
-                                    <span>{formatDate(booking.preferredDate)}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Clock className="w-4 h-4 text-muted-foreground" />
-                                    <span>{formatTime(booking.preferredTime)}</span>
-                                  </div>
-                                </div>
-                                
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-2">
-                                    <FileText className="w-4 h-4 text-muted-foreground" />
-                                    <span>{booking.appointmentType}</span>
-                                  </div>
-                                  {booking.queueNumber && (
-                                    <div className="flex items-center gap-2">
-                                      <AlertCircle className="w-4 h-4 text-blue-600" />
-                                      <span className="font-medium">Queue # {booking.queueNumber}</span>
-                                    </div>
-                                  )}
-                                  {booking.estimatedWaitTime && (
-                                    <div className="flex items-center gap-2">
-                                      <Clock className="w-4 h-4 text-orange-600" />
-                                      <span>Est. wait: {booking.estimatedWaitTime} min</span>
-                                    </div>
-                                  )}
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">Total: ₹{booking.totalPrice}</span>
-                                  </div>
-              </div>
-            </div>
-
-                              {booking.reason && (
-                                <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                                  <p className="text-sm">
-                                    <span className="font-medium">Reason:</span> {booking.reason}
-                                  </p>
-                                </div>
-              )}
-            </div>
-                            
-                            <div className="flex flex-col gap-2 ml-4">
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => navigate('/queue-status')}
-                              >
-                                <Clock className="w-4 h-4 mr-2" />
-                                Check Queue
-                              </Button>
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => navigate('/hospital-emergency')}
-                              >
-                                <MapPin className="w-4 h-4 mr-2" />
-                                Hospital Info
-                              </Button>
+                              {/* Action Buttons */}
+                              <div className="flex flex-row md:flex-col gap-2">
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => navigate('/queue-status')}
+                                  className="flex-1 md:flex-none"
+                                >
+                                  <Clock className="w-4 h-4 mr-2" />
+                                  <span className="hidden sm:inline">Check Queue</span>
+                                  <span className="sm:hidden">Queue</span>
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => navigate('/hospital-emergency')}
+                                  className="flex-1 md:flex-none"
+                                >
+                                  <MapPin className="w-4 h-4 mr-2" />
+                                  <span className="hidden sm:inline">Hospital Info</span>
+                                  <span className="sm:hidden">Info</span>
+                                </Button>
+                              </div>
                             </div>
+                            
+                            {/* Appointment Details */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                  <span className="truncate">{booking.hospitalName}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <User className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                  <span>{booking.department}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                  <span>{formatDate(booking.preferredDate)}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                  <span>{formatTime(booking.preferredTime)}</span>
+                                </div>
+                              </div>
+                              
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                  <span>{booking.appointmentType}</span>
+                                </div>
+                                {booking.queueNumber && (
+                                  <div className="flex items-center gap-2">
+                                    <AlertCircle className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                                    <span className="font-medium">Queue # {booking.queueNumber}</span>
+                                  </div>
+                                )}
+                                {booking.estimatedWaitTime && (
+                                  <div className="flex items-center gap-2">
+                                    <Clock className="w-4 h-4 text-orange-600 flex-shrink-0" />
+                                    <span>Est. wait: {booking.estimatedWaitTime} min</span>
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-green-600">₹{booking.totalPrice}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Reason */}
+                            {booking.reason && (
+                              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                                <p className="text-sm">
+                                  <span className="font-medium">Reason:</span> {booking.reason}
+                                </p>
+                              </div>
+                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -417,62 +435,65 @@ const PatientDashboard = () => {
                   <div className="space-y-4">
                     {pastBookings.map((booking) => (
                       <Card key={booking.id} className="opacity-75 hover:opacity-100 transition-opacity">
-                        <CardContent className="p-6">
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-3">
-                                <h3 className="text-xl font-semibold">{booking.doctorName}</h3>
+                        <CardContent className="p-4 md:p-6">
+                          <div className="space-y-4">
+                            {/* Header */}
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+                              <h3 className="text-lg md:text-xl font-semibold">{booking.doctorName}</h3>
+                              <div className="flex flex-wrap gap-2">
                                 <Badge className={getStatusColor(booking.status)}>
                                   {booking.status}
                                 </Badge>
                                 <Badge className={getUrgencyColor(booking.urgency)}>
                                   {booking.urgency}
-                  </Badge>
-                </div>
-                              
-                              <div className="grid md:grid-cols-2 gap-4 text-sm">
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-2">
-                                    <MapPin className="w-4 h-4 text-muted-foreground" />
-                                    <span>{booking.hospitalName}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <User className="w-4 h-4 text-muted-foreground" />
-                                    <span>{booking.department}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Calendar className="w-4 h-4 text-muted-foreground" />
-                                    <span>{formatDate(booking.preferredDate)}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Clock className="w-4 h-4 text-muted-foreground" />
-                                    <span>{formatTime(booking.preferredTime)}</span>
-                                  </div>
-                                </div>
-                                
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-2">
-                                    <FileText className="w-4 h-4 text-muted-foreground" />
-                                    <span>{booking.appointmentType}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">Total: ₹{booking.totalPrice}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <CheckCircle className="w-4 h-4 text-green-600" />
-                                    <span className="text-green-600">Payment: {booking.paymentStatus}</span>
-                                  </div>
-                                </div>
-            </div>
-                              
-                              {booking.reason && (
-                                <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                                  <p className="text-sm">
-                                    <span className="font-medium">Reason:</span> {booking.reason}
-                </p>
-              </div>
-                              )}
+                                </Badge>
+                              </div>
                             </div>
+                            
+                            {/* Appointment Details */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                  <span className="truncate">{booking.hospitalName}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <User className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                  <span>{booking.department}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                  <span>{formatDate(booking.preferredDate)}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                  <span>{formatTime(booking.preferredTime)}</span>
+                                </div>
+                              </div>
+                              
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                  <span>{booking.appointmentType}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-green-600">₹{booking.totalPrice}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                                  <span className="text-green-600">Payment: {booking.paymentStatus}</span>
+                                </div>
+                              </div>
+                            </div>
+                              
+                            {/* Reason */}
+                            {booking.reason && (
+                              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                                <p className="text-sm">
+                                  <span className="font-medium">Reason:</span> {booking.reason}
+                                </p>
+                              </div>
+                            )}
                           </div>
                         </CardContent>
                       </Card>
