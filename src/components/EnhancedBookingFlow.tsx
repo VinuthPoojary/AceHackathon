@@ -176,7 +176,7 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
     department: "",
     doctor: "",
     appointmentType: "",
-    preferredDate: new Date(),
+    preferredDate: new Date("2025-11-01"), // Set default date to November 1, 2025
     preferredTime: "",
     reason: "",
     urgency: "",

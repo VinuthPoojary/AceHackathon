@@ -228,7 +228,7 @@ export const getPatientQueuePosition = (patientId: string, hospitalId: string, c
 };
 
 // Calculate estimated wait time based on department and queue position
-const calculateEstimatedWaitTime = (department: string, queueNumber: number): number => {
+const calculateEstimatedWaitTime = (department: string, queueNumber: number, doctorId?: string): number => {
   const baseWaitTimes: Record<string, number> = {
     'Emergency': 10,
     'Cardiology': 25,
@@ -239,7 +239,12 @@ const calculateEstimatedWaitTime = (department: string, queueNumber: number): nu
     'Dermatology': 15,
     'Ophthalmology': 15,
     'ENT': 15,
-    'General Medicine': 20
+    'General Medicine': 20,
+    'Internal Medicine': 20,
+    'Surgery': 25,
+    'Oncology': 30,
+    'Radiation Therapy': 35,
+    'Chemotherapy': 40
   };
   
   const baseTime = baseWaitTimes[department] || 20;
@@ -362,5 +367,108 @@ export const callNextPatient = async (hospitalId: string, department: string): P
   } catch (error) {
     console.error('Error calling next patient:', error);
     throw new Error('Failed to call next patient');
+  }
+};
+
+// Create queue entries from confirmed bookings
+export const createQueueFromBookings = async (): Promise<void> => {
+  try {
+    // Get all confirmed bookings for today
+    const today = new Date().toISOString().split('T')[0];
+    const bookingsQuery = query(
+      collection(db, 'bookings'),
+      where('appointmentDate', '==', today),
+      where('status', '==', 'confirmed')
+    );
+    
+    const bookingsSnapshot = await getDocs(bookingsQuery);
+    
+    for (const bookingDoc of bookingsSnapshot.docs) {
+      const booking = bookingDoc.data();
+      
+      // Check if queue entry already exists for this booking
+      const existingQueueQuery = query(
+        collection(db, 'queue_entries'),
+        where('bookingId', '==', booking.id)
+      );
+      
+      const existingQueueSnapshot = await getDocs(existingQueueQuery);
+      
+      if (!existingQueueSnapshot.empty) {
+        continue; // Queue entry already exists
+      }
+      
+      // Create queue entry from booking
+      const queueData = {
+        patientId: booking.patientId,
+        patientName: booking.patientName,
+        hospitalId: booking.hospitalId,
+        hospitalName: booking.hospitalName,
+        department: booking.department,
+        doctorId: booking.doctorId,
+        doctorName: booking.doctorName,
+        appointmentType: 'consultation',
+        bookingId: booking.id,
+        priority: booking.priority || 'normal',
+        notes: booking.symptoms || booking.notes
+      };
+      
+      await addToQueue(queueData);
+      console.log(`✅ Created queue entry for booking ${booking.id}`);
+    }
+    
+    console.log(`✅ Processed ${bookingsSnapshot.docs.length} bookings for queue creation`);
+  } catch (error) {
+    console.error('Error creating queue from bookings:', error);
+    throw new Error('Failed to create queue entries from bookings');
+  }
+};
+
+// Get queue entries for a specific doctor
+export const getDoctorQueue = (doctorId: string, callback: (queue: QueueEntry[]) => void) => {
+  const queueQuery = query(
+    collection(db, 'queue_entries'),
+    where('doctorId', '==', doctorId),
+    where('status', 'in', ['waiting', 'called', 'in_progress'])
+  );
+  
+  return onSnapshot(queueQuery, (snapshot) => {
+    const queue = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as QueueEntry[];
+    
+    // Sort by queue number
+    const sortedQueue = queue.sort((a, b) => a.queueNumber - b.queueNumber);
+    callback(sortedQueue);
+  });
+};
+
+// Update booking status when queue entry is completed
+export const completeQueueEntry = async (queueId: string, notes?: string): Promise<void> => {
+  try {
+    // Update queue entry status
+    await updateQueueStatus(queueId, 'completed', notes);
+    
+    // Get the queue entry to find the associated booking
+    const queueDoc = await getDocs(query(collection(db, 'queue_entries'), where('__name__', '==', queueId)));
+    
+    if (!queueDoc.empty) {
+      const queueData = queueDoc.docs[0].data();
+      
+      if (queueData.bookingId) {
+        // Update the associated booking status
+        await updateDoc(doc(db, 'bookings', queueData.bookingId), {
+          status: 'completed',
+          completedAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+        
+        console.log(`✅ Updated booking ${queueData.bookingId} status to completed`);
+      }
+    }
+  } catch (error) {
+    console.error('Error completing queue entry:', error);
+    throw new Error('Failed to complete queue entry');
   }
 };

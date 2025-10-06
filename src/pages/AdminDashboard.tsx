@@ -14,7 +14,10 @@ import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, where
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { sendEmailNotification } from '@/lib/emailService';
 import { useNavigate } from 'react-router-dom';
+import { createQueueFromBookings } from '@/lib/queueService';
 import { ALL_HOSPITALS, MANGALORE_HOSPITALS, UDUPI_HOSPITALS } from '@/data/hospitals';
+import { SAMPLE_DOCTORS, HOSPITAL_DEPARTMENTS, Doctor } from '@/data/doctors';
+import { SAMPLE_BOOKINGS, Booking } from '@/data/bookings';
 
 interface HospitalApplication {
   id: string;
@@ -71,20 +74,31 @@ const AdminDashboard: React.FC = () => {
   const [applications, setApplications] = useState<HospitalApplication[]>([]);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [selectedApplication, setSelectedApplication] = useState<HospitalApplication | null>(null);
   const [selectedHospital, setSelectedHospital] = useState<Hospital | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [selectedApplicationToDelete, setSelectedApplicationToDelete] = useState<HospitalApplication | null>(null);
   const [selectedPatientToDelete, setSelectedPatientToDelete] = useState<Patient | null>(null);
+  const [selectedDoctorToDelete, setSelectedDoctorToDelete] = useState<Doctor | null>(null);
+  const [selectedBookingToDelete, setSelectedBookingToDelete] = useState<Booking | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleteApplicationDialogOpen, setIsDeleteApplicationDialogOpen] = useState(false);
   const [isDeletePatientDialogOpen, setIsDeletePatientDialogOpen] = useState(false);
+  const [isDeleteDoctorDialogOpen, setIsDeleteDoctorDialogOpen] = useState(false);
+  const [isDeleteBookingDialogOpen, setIsDeleteBookingDialogOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isBulkAdding, setIsBulkAdding] = useState(false);
   const [selectedHospitals, setSelectedHospitals] = useState<string[]>([]);
   const [isAddingSelected, setIsAddingSelected] = useState(false);
+  const [isAddingDoctors, setIsAddingDoctors] = useState(false);
+  const [isAddingBookings, setIsAddingBookings] = useState(false);
+  const [isCreatingQueues, setIsCreatingQueues] = useState(false);
   const navigate = useNavigate();
 
   // Check admin authentication
@@ -142,10 +156,32 @@ const AdminDashboard: React.FC = () => {
       setPatients(pats);
     });
 
+    // Listen to doctors
+    const doctorsQuery = query(collection(db, 'doctors'));
+    const unsubscribeDoctors = onSnapshot(doctorsQuery, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Doctor[];
+      setDoctors(docs);
+    });
+
+    // Listen to bookings
+    const bookingsQuery = query(collection(db, 'bookings'));
+    const unsubscribeBookings = onSnapshot(bookingsQuery, (snapshot) => {
+      const books = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Booking[];
+      setBookings(books);
+    });
+
     return () => {
       unsubscribeApplications();
       unsubscribeHospitals();
       unsubscribePatients();
+      unsubscribeDoctors();
+      unsubscribeBookings();
     };
   }, []);
 
@@ -795,6 +831,184 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  // Doctor management functions
+  const addSampleDoctors = async () => {
+    setIsAddingDoctors(true);
+    try {
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const doctor of SAMPLE_DOCTORS) {
+        try {
+          // Check if doctor already exists
+          const existingDoctors = await getDocs(
+            query(collection(db, 'doctors'), where('id', '==', doctor.id))
+          );
+
+          if (!existingDoctors.empty) {
+            console.log(`Doctor ${doctor.doctorName} already exists, skipping...`);
+            continue;
+          }
+
+          // Create doctor record in Firestore
+          await setDoc(doc(db, 'doctors', doctor.id), {
+            ...doctor,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+
+          console.log(`✅ Doctor record created: ${doctor.doctorName}`);
+          successCount++;
+
+        } catch (error) {
+          console.error(`❌ Error adding doctor ${doctor.doctorName}:`, error);
+          errorCount++;
+        }
+      }
+
+      toast.success(`Sample doctors added! Success: ${successCount}, Errors: ${errorCount}`);
+      console.log(`Sample doctors addition completed! Success: ${successCount}, Errors: ${errorCount}`);
+
+    } catch (error) {
+      console.error('Error adding sample doctors:', error);
+      toast.error('Failed to add sample doctors');
+    } finally {
+      setIsAddingDoctors(false);
+    }
+  };
+
+  const handleDeleteDoctor = async () => {
+    if (!selectedDoctorToDelete) return;
+
+    setIsProcessing(true);
+    try {
+      // Delete the doctor document
+      await deleteDoc(doc(db, 'doctors', selectedDoctorToDelete.id));
+
+      toast.success('Doctor deleted successfully');
+      setIsDeleteDoctorDialogOpen(false);
+      setSelectedDoctorToDelete(null);
+    } catch (error) {
+      console.error('Error deleting doctor:', error);
+      toast.error('Failed to delete doctor');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleUpdateDoctorStatus = async (doctor: Doctor, status: 'active' | 'inactive' | 'on_leave') => {
+    setIsProcessing(true);
+    try {
+      await updateDoc(doc(db, 'doctors', doctor.id), {
+        status,
+        updatedAt: new Date()
+      });
+
+      toast.success(`Doctor status updated to ${status}`);
+    } catch (error) {
+      console.error('Error updating doctor status:', error);
+      toast.error('Failed to update doctor status');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Booking management functions
+  const addSampleBookings = async () => {
+    setIsAddingBookings(true);
+    try {
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const booking of SAMPLE_BOOKINGS) {
+        try {
+          // Check if booking already exists
+          const existingBookings = await getDocs(
+            query(collection(db, 'bookings'), where('id', '==', booking.id))
+          );
+
+          if (!existingBookings.empty) {
+            console.log(`Booking ${booking.id} already exists, skipping...`);
+            continue;
+          }
+
+          // Create booking record in Firestore
+          await setDoc(doc(db, 'bookings', booking.id), {
+            ...booking,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+
+          console.log(`✅ Booking record created: ${booking.id}`);
+          successCount++;
+
+        } catch (error) {
+          console.error(`❌ Error adding booking ${booking.id}:`, error);
+          errorCount++;
+        }
+      }
+
+      toast.success(`Sample bookings added! Success: ${successCount}, Errors: ${errorCount}`);
+      console.log(`Sample bookings addition completed! Success: ${successCount}, Errors: ${errorCount}`);
+
+    } catch (error) {
+      console.error('Error adding sample bookings:', error);
+      toast.error('Failed to add sample bookings');
+    } finally {
+      setIsAddingBookings(false);
+    }
+  };
+
+  const handleDeleteBooking = async () => {
+    if (!selectedBookingToDelete) return;
+
+    setIsProcessing(true);
+    try {
+      // Delete the booking document
+      await deleteDoc(doc(db, 'bookings', selectedBookingToDelete.id));
+
+      toast.success('Booking deleted successfully');
+      setIsDeleteBookingDialogOpen(false);
+      setSelectedBookingToDelete(null);
+    } catch (error) {
+      console.error('Error deleting booking:', error);
+      toast.error('Failed to delete booking');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleUpdateBookingStatus = async (booking: Booking, status: 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'no_show') => {
+    setIsProcessing(true);
+    try {
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        status,
+        updatedAt: new Date()
+      });
+
+      toast.success(`Booking status updated to ${status}`);
+    } catch (error) {
+      console.error('Error updating booking status:', error);
+      toast.error('Failed to update booking status');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Queue management functions
+  const handleCreateQueuesFromBookings = async () => {
+    setIsCreatingQueues(true);
+    try {
+      await createQueueFromBookings();
+      toast.success('Queue entries created successfully from confirmed bookings!');
+    } catch (error) {
+      console.error('Error creating queue entries:', error);
+      toast.error('Failed to create queue entries from bookings');
+    } finally {
+      setIsCreatingQueues(false);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending':
@@ -831,6 +1045,8 @@ const AdminDashboard: React.FC = () => {
           <TabsTrigger value="applications">Hospital Applications</TabsTrigger>
           <TabsTrigger value="hospitals">Approved Hospitals</TabsTrigger>
           <TabsTrigger value="patients">Patient Management</TabsTrigger>
+          <TabsTrigger value="doctors">Doctor Management</TabsTrigger>
+          <TabsTrigger value="bookings">Booking Management</TabsTrigger>
           <TabsTrigger value="bulk-add">Bulk Add Hospitals</TabsTrigger>
         </TabsList>
 
@@ -973,6 +1189,277 @@ const AdminDashboard: React.FC = () => {
                             onClick={() => {
                               setSelectedHospital(hospital);
                               setIsDeleteDialogOpen(true);
+                            }}
+                            disabled={isProcessing}
+                            className="text-red-600 border-red-600 hover:bg-red-50"
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="doctors" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Doctor Management</CardTitle>
+              <CardDescription>
+                Manage doctors across all hospitals and departments
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex justify-between items-center">
+                <div className="text-sm text-gray-600">
+                  Total Doctors: {doctors.length}
+                </div>
+                <Button
+                  onClick={addSampleDoctors}
+                  disabled={isAddingDoctors}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {isAddingDoctors ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Adding Sample Doctors...
+                    </>
+                  ) : (
+                    'Add Sample Doctors'
+                  )}
+                </Button>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Doctor Name</TableHead>
+                    <TableHead>Specialization</TableHead>
+                    <TableHead>Hospital</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Experience</TableHead>
+                    <TableHead>Fee</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Rating</TableHead>
+                    <TableHead>Patients</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {doctors.map((doctor) => (
+                    <TableRow key={doctor.id}>
+                      <TableCell className="font-medium">{doctor.doctorName}</TableCell>
+                      <TableCell>{doctor.specialization}</TableCell>
+                      <TableCell>{doctor.hospitalName}</TableCell>
+                      <TableCell>{doctor.department}</TableCell>
+                      <TableCell>{doctor.experience} years</TableCell>
+                      <TableCell>₹{doctor.consultationFee}</TableCell>
+                      <TableCell>{getStatusBadge(doctor.status)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center">
+                          <span className="mr-1">{doctor.rating}</span>
+                          <span className="text-yellow-500">⭐</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>{doctor.totalPatients}</TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          {doctor.status === 'active' && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleUpdateDoctorStatus(doctor, 'inactive')}
+                                disabled={isProcessing}
+                                className="text-yellow-600 border-yellow-600 hover:bg-yellow-50"
+                              >
+                                Deactivate
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleUpdateDoctorStatus(doctor, 'on_leave')}
+                                disabled={isProcessing}
+                                className="text-orange-600 border-orange-600 hover:bg-orange-50"
+                              >
+                                On Leave
+                              </Button>
+                            </>
+                          )}
+                          {doctor.status === 'inactive' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleUpdateDoctorStatus(doctor, 'active')}
+                              disabled={isProcessing}
+                              className="text-green-600 border-green-600 hover:bg-green-50"
+                            >
+                              Activate
+                            </Button>
+                          )}
+                          {doctor.status === 'on_leave' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleUpdateDoctorStatus(doctor, 'active')}
+                              disabled={isProcessing}
+                              className="text-green-600 border-green-600 hover:bg-green-50"
+                            >
+                              Return
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedDoctorToDelete(doctor);
+                              setIsDeleteDoctorDialogOpen(true);
+                            }}
+                            disabled={isProcessing}
+                            className="text-red-600 border-red-600 hover:bg-red-50"
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="bookings" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Booking Management</CardTitle>
+              <CardDescription>
+                Manage patient bookings and appointments across all hospitals
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex justify-between items-center">
+                <div className="text-sm text-gray-600">
+                  Total Bookings: {bookings.length}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={addSampleBookings}
+                    disabled={isAddingBookings}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    {isAddingBookings ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Adding Sample Bookings...
+                      </>
+                    ) : (
+                      'Add Sample Bookings'
+                    )}
+                  </Button>
+                  <Button
+                    onClick={handleCreateQueuesFromBookings}
+                    disabled={isCreatingQueues}
+                    className="bg-purple-600 hover:bg-purple-700"
+                  >
+                    {isCreatingQueues ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Creating Queues...
+                      </>
+                    ) : (
+                      'Create Queues from Bookings'
+                    )}
+                  </Button>
+                </div>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Patient</TableHead>
+                    <TableHead>Doctor</TableHead>
+                    <TableHead>Hospital</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Date & Time</TableHead>
+                    <TableHead>Fee</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Queue</TableHead>
+                    <TableHead>Payment</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bookings.map((booking) => (
+                    <TableRow key={booking.id}>
+                      <TableCell className="font-medium">{booking.patientName}</TableCell>
+                      <TableCell>{booking.doctorName}</TableCell>
+                      <TableCell>{booking.hospitalName}</TableCell>
+                      <TableCell>{booking.department}</TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          <div>{booking.appointmentDate}</div>
+                          <div className="text-gray-500">{booking.appointmentTime}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>₹{booking.consultationFee}</TableCell>
+                      <TableCell>{getStatusBadge(booking.status)}</TableCell>
+                      <TableCell>
+                        {booking.queueNumber ? (
+                          <Badge variant="outline">#{booking.queueNumber}</Badge>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={booking.paymentStatus === 'paid' ? 'default' : 'secondary'}>
+                          {booking.paymentStatus}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          {booking.status === 'pending' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleUpdateBookingStatus(booking, 'confirmed')}
+                              disabled={isProcessing}
+                              className="text-green-600 border-green-600 hover:bg-green-50"
+                            >
+                              Confirm
+                            </Button>
+                          )}
+                          {booking.status === 'confirmed' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleUpdateBookingStatus(booking, 'completed')}
+                              disabled={isProcessing}
+                              className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                            >
+                              Complete
+                            </Button>
+                          )}
+                          {(booking.status === 'confirmed' || booking.status === 'pending') && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleUpdateBookingStatus(booking, 'cancelled')}
+                              disabled={isProcessing}
+                              className="text-red-600 border-red-600 hover:bg-red-50"
+                            >
+                              Cancel
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedBookingToDelete(booking);
+                              setIsDeleteBookingDialogOpen(true);
                             }}
                             disabled={isProcessing}
                             className="text-red-600 border-red-600 hover:bg-red-50"
@@ -1480,6 +1967,108 @@ const AdminDashboard: React.FC = () => {
               disabled={isProcessing}
             >
               {isProcessing ? 'Deleting...' : 'Delete Patient'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Doctor Dialog */}
+      <Dialog open={isDeleteDoctorDialogOpen} onOpenChange={setIsDeleteDoctorDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Delete Doctor</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete the doctor account and all associated data.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {selectedDoctorToDelete && (
+              <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                <h4 className="font-semibold text-red-800 mb-2">Doctor Details:</h4>
+                <p className="text-red-700"><strong>Name:</strong> {selectedDoctorToDelete.doctorName}</p>
+                <p className="text-red-700"><strong>Specialization:</strong> {selectedDoctorToDelete.specialization}</p>
+                <p className="text-red-700"><strong>Hospital:</strong> {selectedDoctorToDelete.hospitalName}</p>
+                <p className="text-red-700"><strong>Experience:</strong> {selectedDoctorToDelete.experience} years</p>
+              </div>
+            )}
+            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+              <h4 className="font-semibold text-yellow-800 mb-2">⚠️ Warning:</h4>
+              <ul className="text-yellow-700 text-sm space-y-1">
+                <li>• All doctor data will be permanently deleted</li>
+                <li>• All patient bookings with this doctor will be cancelled</li>
+                <li>• Doctor's medical records and history will be removed</li>
+                <li>• This action cannot be undone</li>
+              </ul>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeleteDoctorDialogOpen(false);
+                setSelectedDoctorToDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteDoctor}
+              disabled={isProcessing}
+            >
+              {isProcessing ? 'Deleting...' : 'Delete Doctor'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Booking Dialog */}
+      <Dialog open={isDeleteBookingDialogOpen} onOpenChange={setIsDeleteBookingDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Delete Booking</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete the booking and all associated data.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {selectedBookingToDelete && (
+              <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                <h4 className="font-semibold text-red-800 mb-2">Booking Details:</h4>
+                <p className="text-red-700"><strong>Patient:</strong> {selectedBookingToDelete.patientName}</p>
+                <p className="text-red-700"><strong>Doctor:</strong> {selectedBookingToDelete.doctorName}</p>
+                <p className="text-red-700"><strong>Hospital:</strong> {selectedBookingToDelete.hospitalName}</p>
+                <p className="text-red-700"><strong>Date:</strong> {selectedBookingToDelete.appointmentDate}</p>
+                <p className="text-red-700"><strong>Time:</strong> {selectedBookingToDelete.appointmentTime}</p>
+                <p className="text-red-700"><strong>Status:</strong> {selectedBookingToDelete.status}</p>
+              </div>
+            )}
+            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+              <h4 className="font-semibold text-yellow-800 mb-2">⚠️ Warning:</h4>
+              <ul className="text-yellow-700 text-sm space-y-1">
+                <li>• Booking data will be permanently deleted</li>
+                <li>• Patient will need to create a new booking</li>
+                <li>• Queue position will be lost</li>
+                <li>• This action cannot be undone</li>
+              </ul>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeleteBookingDialogOpen(false);
+                setSelectedBookingToDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteBooking}
+              disabled={isProcessing}
+            >
+              {isProcessing ? 'Deleting...' : 'Delete Booking'}
             </Button>
           </DialogFooter>
         </DialogContent>
