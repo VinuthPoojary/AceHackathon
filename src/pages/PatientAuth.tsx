@@ -70,7 +70,7 @@ export default function PatientAuth() {
     setIsLoading(true);
     try {
       await loginPatient(data.identifier, data.password);
-      navigate("/patient");
+      navigate("/patient-dashboard");
     } catch (error: any) {
       toast.error(error.message || "Invalid credentials");
     } finally {
