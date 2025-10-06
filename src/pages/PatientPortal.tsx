@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,9 +14,8 @@ import PatientDashboard from "./PatientDashboard";
 import { useAuth } from "@/contexts/AuthProvider";
 import { toast } from "@/components/ui/sonner";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, addDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, getDoc, addDoc, collection } from "firebase/firestore";
 import RealTimeQueueDetails from "@/components/RealTimeQueueDetails";
-import { useNavigate } from "react-router-dom";
 
 // Hospital list copied from HospitalSelector component
 const UDUPI_HOSPITALS = [
@@ -100,20 +98,21 @@ const UDUPI_HOSPITALS = [
 
 const PatientPortal = () => {
   const { currentUser, isPatientLoggedIn } = useAuth();
-  const navigate = useNavigate();
   const [profile, setProfile] = useState<any>(null);
   const [editableName, setEditableName] = useState("");
   const [editableId, setEditableId] = useState("");
-  const [bookingId, setBookingId] = useState("");
-  const [isValidatingBooking, setIsValidatingBooking] = useState(false);
-  const [bookingData, setBookingData] = useState<any>(null);
+  const [selectedHospital, setSelectedHospital] = useState<any>(null);
+  const [selectedDepartment, setSelectedDepartment] = useState("");
+  const [appointmentType, setAppointmentType] = useState("Walk-in");
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [queuePosition, setQueuePosition] = useState(12);
   const [estimatedWait, setEstimatedWait] = useState(35);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState("profile");
 
 
   useEffect(() => {
+    // Redirect to the new patient dashboard
     if (currentUser) {
       fetchProfile();
     }
@@ -167,45 +166,52 @@ const PatientPortal = () => {
     Emergency: 300,
   };
 
-  const validateBookingId = async () => {
-    if (!bookingId.trim()) {
-      toast.error("Please enter a booking ID.");
-      setBookingData(null);
-      return false;
-    }
+  const calculatePrice = () => {
+    return (
+      (departmentPrices[selectedDepartment] || 0) +
+      (appointmentTypePrices[appointmentType] || 0)
+    );
+  };
 
-    setIsValidatingBooking(true);
+  const handlePaymentSuccess = async () => {
+    setIsCheckedIn(true);
+    setQueuePosition(Math.floor(Math.random() * 20) + 5);
+    setEstimatedWait(Math.floor(Math.random() * 60) + 15);
+    setPaymentProcessing(false);
+
+    // Add check-in to Firestore
     try {
-      const q = query(
-        collection(db, "bookings"),
-        where("bookingId", "==", bookingId.trim())
-      );
-      const querySnapshot = await getDocs(q);
-
-      if (!querySnapshot.empty) {
-        const booking = querySnapshot.docs[0].data();
-        setBookingData(booking);
-        toast.success("Booking ID validated successfully.");
-        return true;
-      } else {
-        setBookingData(null);
-        toast.error("Invalid booking ID. Please check and try again.");
-        return false;
-      }
+      await addDoc(collection(db, "checkins"), {
+        patientId: editableId,
+        patientName: editableName,
+        department: selectedDepartment,
+        appointmentType,
+        price: calculatePrice(),
+        checkedInAt: new Date(),
+        status: "waiting",
+        queuePosition,
+        estimatedWait,
+      });
     } catch (error) {
-      console.error("Error validating booking ID:", error);
-      toast.error("Error validating booking ID. Please try again.");
-      setBookingData(null);
-      return false;
-    } finally {
-      setIsValidatingBooking(false);
+      console.error("Error adding check-in:", error);
     }
   };
 
-  const handleViewQueue = async () => {
-    const isValid = await validateBookingId();
-    if (isValid && bookingData) {
-      navigate("/display");
+  const handleCheckIn = () => {
+    if (!isProfileComplete()) {
+      toast.error("Please complete your profile before check-in.");
+      return;
+    }
+    const price = calculatePrice();
+    if (price > 0) {
+      // Simulate Razorpay payment gateway
+      setPaymentProcessing(true);
+      setTimeout(() => {
+        toast.success(`Payment of ₹${price} successful!`);
+        handlePaymentSuccess();
+      }, 2000);
+    } else {
+      handlePaymentSuccess();
     }
   };
 
@@ -277,143 +283,204 @@ const PatientPortal = () => {
                   Udupi Hospitals & Healthcare Centers
                 </CardTitle>
                 <p className="text-lg text-muted-foreground mt-2">
-                  View hospital details, get directions, and book appointments
+                  Select a hospital to view details, get directions, and book appointments
                 </p>
+                {selectedHospital && (
+                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-sm text-green-800">
+                      <strong>Selected Hospital:</strong> {selectedHospital.hospitalName || selectedHospital.name}
+                    </p>
+                    <p className="text-xs text-green-600">{selectedHospital.address}</p>
+                  </div>
+                )}
               </CardHeader>
               <CardContent>
-                <HospitalSelector />
+                <HospitalSelector
+                  selectedHospital={selectedHospital}
+                  onSelectHospital={setSelectedHospital}
+                />
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="booking">
             <EnhancedBookingFlow
+              selectedHospital={selectedHospital}
               onBookingComplete={(booking) => {
                 console.log("Booking completed:", booking);
-                navigate("/display");
+                // Removed automatic navigation to queue status
               }}
+              onHospitalSelect={setSelectedHospital}
             />
           </TabsContent>
 
           <TabsContent value="queue">
-          {!isCheckedIn ? (
-            <Card className="p-4 shadow-elevated max-w-xl mx-auto">
-              <h2 className="text-2xl font-semibold mb-6 text-center">Virtual Check-In</h2>
+            {!isCheckedIn ? (
+              <Card className="p-4 shadow-elevated max-w-xl mx-auto">
+                <h2 className="text-2xl font-semibold mb-6 text-center">Virtual Check-In</h2>
 
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Booking ID</label>
-                  <input
-                    type="text"
-                    value={bookingId}
-                    onChange={(e) => setBookingId(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg"
-                    disabled={isValidatingBooking}
-                    onBlur={validateBookingId}
-                    placeholder="Enter your booking ID"
-                  />
-                </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Patient Name</label>
+                    <input
+                      type="text"
+                      value={editableName}
+                      onChange={(e) => setEditableName(e.target.value)}
+                      className="w-full px-4 py-2 border rounded-lg"
+                    />
+                  </div>
 
-                <Button
-                  onClick={handleViewQueue}
-                  className="w-full bg-gradient-to-r from-blue-600 to-green-600 text-white hover:opacity-90"
-                  size="lg"
-                  disabled={isValidatingBooking || !bookingId.trim()}
-                >
-                  <CheckCircle className="mr-2 h-5 w-5" />
-                  {isValidatingBooking ? "Validating..." : "View Queue"}
-                </Button>
-              </div>
-            </Card>
-          ) : (
-            <div className="max-w-4xl mx-auto space-y-6">
-              <Card className="p-6 shadow-elevated bg-gradient-to-br from-card to-accent/5">
-                <div className="flex items-center justify-between mb-6">
-                  <Badge className="bg-secondary text-secondary-foreground">Checked In</Badge>
-                  <span className="text-sm text-muted-foreground">Booking ID: {bookingId}</span>
-                </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Patient ID / Medical Record Number</label>
+                    <input
+                      type="text"
+                      value={editableId}
+                      onChange={(e) => setEditableId(e.target.value)}
+                      className="w-full px-4 py-2 border rounded-lg"
+                    />
+                  </div>
 
-                {/* You can add more details about the booking or queue here */}
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Select Hospital</label>
+                    <select
+                      className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                      value={selectedHospital?.id || ""}
+                      onChange={(e) => {
+                        const hospitalId = parseInt(e.target.value, 10);
+                        const hospital = UDUPI_HOSPITALS.find(h => h.id === hospitalId);
+                        setSelectedHospital(hospital || null);
+                      }}
+                    >
+                      <option value="">Select a hospital</option>
+                      {UDUPI_HOSPITALS.map((hospital) => (
+                        <option key={hospital.id} value={hospital.id}>
+                          {hospital.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div className="grid md:grid-cols-3 gap-4 mt-6">
-                  <Card className="p-4 bg-background/50">
-                    <div className="flex items-center space-x-3">
-                      <User className="h-5 w-5 text-primary" />
-                      <div>
-                        <p className="text-sm text-muted-foreground">Patients Ahead</p>
-                        <p className="text-2xl font-bold">{queuePosition - 1}</p>
-                      </div>
-                    </div>
-                  </Card>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Select Department</label>
+                    <select
+                      className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                      value={selectedDepartment}
+                      onChange={(e) => setSelectedDepartment(e.target.value)}
+                    >
+                      <option value="">Select a department</option>
+                      <option value="Emergency">Emergency</option>
+                      <option value="Cardiology">Cardiology</option>
+                      <option value="Neurology">Neurology</option>
+                      <option value="Orthopedics">Orthopedics</option>
+                      <option value="Pediatrics">Pediatrics</option>
+                      <option value="Gynecology">Gynecology</option>
+                      <option value="Dermatology">Dermatology</option>
+                      <option value="Ophthalmology">Ophthalmology</option>
+                      <option value="ENT">ENT</option>
+                      <option value="General Medicine">General Medicine</option>
+                    </select>
+                  </div>
 
-                  <Card className="p-4 bg-background/50">
-                    <div className="flex items-center space-x-3">
-                      <Clock className="h-5 w-5 text-warning" />
-                      <div>
-                        <p className="text-sm text-muted-foreground">Est. Wait Time</p>
-                        <p className="text-2xl font-bold">{estimatedWait} min</p>
-                      </div>
-                    </div>
-                  </Card>
-
-                  <Card className="p-4 bg-background/50">
-                    <div className="flex items-center space-x-3">
-                      <Calendar className="h-5 w-5 text-secondary" />
-                      <div>
-                        <p className="text-sm text-muted-foreground">Status</p>
-                        <p className="text-lg font-semibold text-secondary">In Queue</p>
-                      </div>
-                    </div>
-                  </Card>
+                  <Button
+                    onClick={handleCheckIn}
+                    className="w-full bg-gradient-to-r from-blue-600 to-green-600 text-white hover:opacity-90"
+                    size="lg"
+                    disabled={!selectedHospital || !selectedDepartment || paymentProcessing}
+                  >
+                    <CheckCircle className="mr-2 h-5 w-5" />
+                    {paymentProcessing ? "Processing Payment..." : "View Queue"}
+                  </Button>
                 </div>
               </Card>
-
-              {/* Progress Timeline */}
-              <Card className="p-6 shadow-card">
-                <h3 className="font-semibold mb-4">Your Journey</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
-                      <CheckCircle className="h-5 w-5 text-secondary-foreground" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium">Checked In</p>
-                      <p className="text-sm text-muted-foreground">Completed</p>
-                    </div>
+            ) : (
+              <div className="max-w-4xl mx-auto space-y-6">
+                <Card className="p-6 shadow-elevated bg-gradient-to-br from-card to-accent/5">
+                  <div className="flex items-center justify-between mb-6">
+                    <Badge className="bg-secondary text-secondary-foreground">Checked In</Badge>
+                    <span className="text-sm text-muted-foreground">Department: {selectedDepartment}</span>
                   </div>
 
-                  <div className="flex items-center space-x-4">
-                    <div className="w-8 h-8 rounded-full bg-warning flex items-center justify-center">
-                      <Clock className="h-5 w-5 text-warning-foreground" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium">Waiting in Queue</p>
-                      <p className="text-sm text-muted-foreground">Current status</p>
-                    </div>
-                  </div>
+                  <QueuePosition hospitalId={selectedHospital?.id} />
 
-                  <div className="flex items-center space-x-4">
-                    <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-                      <User className="h-5 w-5 text-muted-foreground" />
+                  <div className="grid md:grid-cols-3 gap-4 mt-6">
+                    <Card className="p-4 bg-background/50">
+                      <div className="flex items-center space-x-3">
+                        <User className="h-5 w-5 text-primary" />
+                        <div>
+                          <p className="text-sm text-muted-foreground">Patients Ahead</p>
+                          <p className="text-2xl font-bold">{queuePosition - 1}</p>
+                        </div>
+                      </div>
+                    </Card>
+
+                    <Card className="p-4 bg-background/50">
+                      <div className="flex items-center space-x-3">
+                        <Clock className="h-5 w-5 text-warning" />
+                        <div>
+                          <p className="text-sm text-muted-foreground">Est. Wait Time</p>
+                          <p className="text-2xl font-bold">{estimatedWait} min</p>
+                        </div>
+                      </div>
+                    </Card>
+
+                    <Card className="p-4 bg-background/50">
+                      <div className="flex items-center space-x-3">
+                        <Calendar className="h-5 w-5 text-secondary" />
+                        <div>
+                          <p className="text-sm text-muted-foreground">Status</p>
+                          <p className="text-lg font-semibold text-secondary">In Queue</p>
+                        </div>
+                      </div>
+                    </Card>
+                  </div>
+                </Card>
+
+                {/* Progress Timeline */}
+                <Card className="p-6 shadow-card">
+                  <h3 className="font-semibold mb-4">Your Journey</h3>
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
+                        <CheckCircle className="h-5 w-5 text-secondary-foreground" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium">Checked In</p>
+                        <p className="text-sm text-muted-foreground">Completed</p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <p className="font-medium">Consultation</p>
-                      <p className="text-sm text-muted-foreground">Upcoming</p>
+
+                    <div className="flex items-center space-x-4">
+                      <div className="w-8 h-8 rounded-full bg-warning flex items-center justify-center">
+                        <Clock className="h-5 w-5 text-warning-foreground" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium">Waiting in Queue</p>
+                        <p className="text-sm text-muted-foreground">Current status</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-4">
+                      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                        <User className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium">Consultation</p>
+                        <p className="text-sm text-muted-foreground">Upcoming</p>
+                      </div>
                     </div>
                   </div>
+                </Card>
+
+                <div className="flex justify-center">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsCheckedIn(false)}
+                  >
+                    Cancel Check-In
+                  </Button>
                 </div>
-              </Card>
-
-              <div className="flex justify-center">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsCheckedIn(false)}
-                >
-                  Cancel Check-In
-                </Button>
               </div>
-            </div>
-          )}
+            )}
           </TabsContent>
         </Tabs>
       </div>

@@ -90,23 +90,74 @@ export function getNextAvailableDate(doctor: DoctorAvailability): Date {
  */
 export function formatAvailabilityStatus(doctor: DoctorAvailability): string {
   if (doctor.status !== 'active') {
-    return 'Currently Unavailable';
+    return 'Not Available for Booking';
   }
 
   if (doctor.availableTime === '24/7') {
     return 'Available 24/7';
   }
 
-  const daysCount = doctor.availableDays.length;
+  const daysCount = doctor.availableDays?.length || 0;
   const daysText = daysCount === 7 ? 'All Days' : `${daysCount} Days`;
   
   return `${daysText} • ${doctor.availableTime}`;
 }
 
 /**
- * Check if a doctor is available right now
+ * Check if a doctor is available for booking (active status only)
  */
 export function isDoctorAvailableNow(doctor: DoctorAvailability): boolean {
+  // If doctor is active, they are available for booking
+  // Working days and time are checked during appointment scheduling
+  return doctor.status === 'active';
+}
+
+/**
+ * Check if booking is allowed based on advance booking rules
+ */
+export function isBookingAllowed(selectedDate: Date, appointmentType: string): { allowed: boolean; reason?: string } {
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0); // Start of tomorrow
+  
+  // Emergency appointments can be booked anytime
+  if (appointmentType === 'emergency') {
+    return { allowed: true };
+  }
+  
+  // For non-emergency appointments, must book at least 24 hours in advance
+  if (selectedDate < tomorrow) {
+    return { 
+      allowed: false, 
+      reason: 'Non-emergency appointments must be booked at least 24 hours in advance. Please select tomorrow or later.' 
+    };
+  }
+  
+  return { allowed: true };
+}
+
+/**
+ * Get minimum allowed date for booking based on appointment type
+ */
+export function getMinimumBookingDate(appointmentType: string): Date {
+  const now = new Date();
+  
+  // Emergency appointments can be booked for today
+  if (appointmentType === 'emergency') {
+    return now;
+  }
+  
+  // Non-emergency appointments require 24 hours advance booking
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return tomorrow;
+}
+
+/**
+ * Check if a doctor is available right now (for real-time status)
+ */
+export function isDoctorAvailableRightNow(doctor: DoctorAvailability): boolean {
   if (doctor.status !== 'active') {
     return false;
   }
@@ -124,7 +175,6 @@ export function isDoctorAvailableNow(doctor: DoctorAvailability): boolean {
   }
 
   // For specific time ranges, check if current time falls within range
-  // This is a simplified check - in a real app, you'd parse the time range more precisely
   const currentHour = now.getHours();
   
   if (doctor.availableTime.includes('6:00 AM - 12:00 PM')) {

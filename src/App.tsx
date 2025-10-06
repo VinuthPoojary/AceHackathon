@@ -5,6 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import PatientPortal from "./pages/PatientPortal";
+import PatientDashboard from "./pages/PatientDashboard";
+import HospitalEmergency from "./pages/HospitalEmergency";
+import Bookings from "./pages/Bookings";
+import QueueStatus from "./pages/QueueStatus";
 import QueueDisplay from "./pages/QueueDisplay";
 import NotFound from "./pages/NotFound";
 import AuthPage from "./pages/AuthPag";
@@ -23,6 +27,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthDebugger } from "./components/AuthDebugger";
 import { DirectQueueJoin } from "./components/DirectQueueJoin";
 import { VirtualCheckIn } from "./components/VirtualCheckIn";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 const queryClient = new QueryClient();
 
@@ -32,8 +37,14 @@ const App = () => (
       <Toaster />
       <Sonner />
       <AuthProvider>
-        <BrowserRouter>
-          <Routes>
+        <ErrorBoundary>
+          <BrowserRouter
+            future={{
+              v7_startTransition: true,
+              v7_relativeSplatPath: true,
+            }}
+          >
+            <Routes>
             <Route path="/" element={<MainApp />} />
             <Route path="/booking" element={<Index />} />
             <Route path="/auth" element={<AuthPage />} />
@@ -45,6 +56,38 @@ const App = () => (
               element={
                 <ProtectedRoute type="patient">
                   <PatientPortal />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/patient-dashboard"
+              element={
+                <ProtectedRoute type="patient">
+                  <PatientDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/hospital-emergency"
+              element={
+                <ProtectedRoute type="patient">
+                  <HospitalEmergency />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/bookings"
+              element={
+                <ProtectedRoute type="patient">
+                  <Bookings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/queue-status"
+              element={
+                <ProtectedRoute type="patient">
+                  <QueueStatus />
                 </ProtectedRoute>
               }
             />
@@ -63,15 +106,16 @@ const App = () => (
             <Route path="/verify-otp" element={<OTPVerification onVerificationComplete={() => {}} onBack={() => {}} />} />
             
             {/* Email Test */}
-            <Route path="/email-test" element={<EmailTest />} />
+            {/* <Route path="/email-test" element={<EmailTest />} /> */}
             
             {/* Display Routes */}
             <Route path="/display" element={<QueueDisplay />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
-          </Routes>
-          {/* <AuthDebugger /> */}
-        </BrowserRouter>
+            </Routes>
+            {/* <AuthDebugger /> */}
+          </BrowserRouter>
+        </ErrorBoundary>
       </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
