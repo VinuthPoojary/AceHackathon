@@ -41,11 +41,11 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     hospitalName: "A.J. Hospital & Research Centre",
     department: "Cardiology",
     specialization: "Cardiology",
-    appointmentDate: "2024-01-15",
+    appointmentDate: "2025-01-15",
     appointmentTime: "09:00",
     consultationFee: 800,
     status: "confirmed",
-    bookingDate: new Date("2024-01-10"),
+    bookingDate: new Date("2025-01-10"),
     symptoms: "Chest pain and shortness of breath",
     notes: "Patient has history of hypertension",
     queueNumber: 1,
@@ -53,8 +53,8 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     priority: "normal",
     paymentStatus: "paid",
     paymentMethod: "online",
-    createdAt: new Date("2024-01-10"),
-    updatedAt: new Date("2024-01-10")
+    createdAt: new Date("2025-01-10"),
+    updatedAt: new Date("2025-01-10")
   },
   {
     id: "BOOK002",
@@ -68,11 +68,11 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     hospitalName: "A.J. Hospital & Research Centre",
     department: "Pediatrics",
     specialization: "Pediatrics",
-    appointmentDate: "2024-01-15",
+    appointmentDate: "2025-01-15",
     appointmentTime: "10:00",
     consultationFee: 600,
     status: "confirmed",
-    bookingDate: new Date("2024-01-11"),
+    bookingDate: new Date("2025-01-11"),
     symptoms: "Fever and cough in 5-year-old child",
     notes: "Child is not eating properly",
     queueNumber: 2,
@@ -80,8 +80,8 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     priority: "normal",
     paymentStatus: "paid",
     paymentMethod: "card",
-    createdAt: new Date("2024-01-11"),
-    updatedAt: new Date("2024-01-11")
+    createdAt: new Date("2025-01-11"),
+    updatedAt: new Date("2025-01-11")
   },
   {
     id: "BOOK003",
@@ -95,11 +95,11 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     hospitalName: "A.J. Hospital & Research Centre",
     department: "Orthopedics",
     specialization: "Orthopedics",
-    appointmentDate: "2024-01-15",
+    appointmentDate: "2025-01-15",
     appointmentTime: "11:00",
     consultationFee: 750,
     status: "confirmed",
-    bookingDate: new Date("2024-01-12"),
+    bookingDate: new Date("2025-01-12"),
     symptoms: "Knee pain after sports injury",
     notes: "Patient is an athlete",
     queueNumber: 3,
@@ -107,8 +107,8 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     priority: "normal",
     paymentStatus: "paid",
     paymentMethod: "online",
-    createdAt: new Date("2024-01-12"),
-    updatedAt: new Date("2024-01-12")
+    createdAt: new Date("2025-01-12"),
+    updatedAt: new Date("2025-01-12")
   },
   {
     id: "BOOK004",
@@ -122,11 +122,11 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     hospitalName: "KMC Hospital",
     department: "Internal Medicine",
     specialization: "Internal Medicine",
-    appointmentDate: "2024-01-16",
+    appointmentDate: "2025-01-16",
     appointmentTime: "09:00",
     consultationFee: 500,
     status: "confirmed",
-    bookingDate: new Date("2024-01-13"),
+    bookingDate: new Date("2025-01-13"),
     symptoms: "Diabetes management consultation",
     notes: "Regular follow-up for diabetes",
     queueNumber: 1,
@@ -134,8 +134,8 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     priority: "normal",
     paymentStatus: "paid",
     paymentMethod: "cash",
-    createdAt: new Date("2024-01-13"),
-    updatedAt: new Date("2024-01-13")
+    createdAt: new Date("2025-01-13"),
+    updatedAt: new Date("2025-01-13")
   },
   {
     id: "BOOK005",
@@ -149,11 +149,11 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     hospitalName: "KMC Hospital",
     department: "Gynecology",
     specialization: "Gynecology",
-    appointmentDate: "2024-01-16",
+    appointmentDate: "2025-01-16",
     appointmentTime: "10:00",
     consultationFee: 650,
     status: "confirmed",
-    bookingDate: new Date("2024-01-14"),
+    bookingDate: new Date("2025-01-14"),
     symptoms: "Pregnancy consultation",
     notes: "First trimester checkup",
     queueNumber: 2,
@@ -161,8 +161,8 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     priority: "normal",
     paymentStatus: "paid",
     paymentMethod: "online",
-    createdAt: new Date("2024-01-14"),
-    updatedAt: new Date("2024-01-14")
+    createdAt: new Date("2025-01-14"),
+    updatedAt: new Date("2025-01-14")
   },
   {
     id: "BOOK006",
@@ -180,7 +180,7 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     appointmentTime: "09:00",
     consultationFee: 700,
     status: "pending",
-    bookingDate: new Date("2024-01-15"),
+    bookingDate: new Date("2025-01-15"),
     symptoms: "Skin rash and itching",
     notes: "Allergic reaction suspected",
     queueNumber: 1,
@@ -188,8 +188,8 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     priority: "normal",
     paymentStatus: "pending",
     paymentMethod: "online",
-    createdAt: new Date("2024-01-15"),
-    updatedAt: new Date("2024-01-15")
+    createdAt: new Date("2025-01-15"),
+    updatedAt: new Date("2025-01-15")
   },
   {
     id: "BOOK007",
@@ -207,7 +207,7 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     appointmentTime: "10:00",
     consultationFee: 800,
     status: "confirmed",
-    bookingDate: new Date("2024-01-15"),
+    bookingDate: new Date("2025-01-15"),
     symptoms: "Blurred vision and eye strain",
     notes: "Computer work related eye problems",
     queueNumber: 2,
@@ -215,8 +215,8 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     priority: "normal",
     paymentStatus: "paid",
     paymentMethod: "card",
-    createdAt: new Date("2024-01-15"),
-    updatedAt: new Date("2024-01-15")
+    createdAt: new Date("2025-01-15"),
+    updatedAt: new Date("2025-01-15")
   },
   {
     id: "BOOK008",
@@ -234,7 +234,7 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     appointmentTime: "09:00",
     consultationFee: 550,
     status: "confirmed",
-    bookingDate: new Date("2024-01-16"),
+    bookingDate: new Date("2025-01-16"),
     symptoms: "General health checkup",
     notes: "Annual health examination",
     queueNumber: 1,
@@ -242,8 +242,8 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     priority: "normal",
     paymentStatus: "paid",
     paymentMethod: "online",
-    createdAt: new Date("2024-01-16"),
-    updatedAt: new Date("2024-01-16")
+    createdAt: new Date("2025-01-16"),
+    updatedAt: new Date("2025-01-16")
   },
   {
     id: "BOOK009",
@@ -261,7 +261,7 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     appointmentTime: "10:00",
     consultationFee: 600,
     status: "confirmed",
-    bookingDate: new Date("2024-01-16"),
+    bookingDate: new Date("2025-01-16"),
     symptoms: "Ear infection and hearing loss",
     notes: "Swimming related ear problem",
     queueNumber: 2,
@@ -269,8 +269,8 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     priority: "normal",
     paymentStatus: "paid",
     paymentMethod: "cash",
-    createdAt: new Date("2024-01-16"),
-    updatedAt: new Date("2024-01-16")
+    createdAt: new Date("2025-01-16"),
+    updatedAt: new Date("2025-01-16")
   },
   {
     id: "BOOK010",
@@ -284,11 +284,11 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     hospitalName: "Manipal Hospital Udupi",
     department: "Cardiology",
     specialization: "Cardiology",
-    appointmentDate: "2024-01-19",
+    appointmentDate: "2025-01-19",
     appointmentTime: "09:00",
     consultationFee: 900,
     status: "confirmed",
-    bookingDate: new Date("2024-01-17"),
+    bookingDate: new Date("2025-01-17"),
     symptoms: "Heart palpitations and chest discomfort",
     notes: "Family history of heart disease",
     queueNumber: 1,
@@ -296,8 +296,8 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     priority: "urgent",
     paymentStatus: "paid",
     paymentMethod: "online",
-    createdAt: new Date("2024-01-17"),
-    updatedAt: new Date("2024-01-17")
+    createdAt: new Date("2025-01-17"),
+    updatedAt: new Date("2025-01-17")
   },
   {
     id: "BOOK011",
@@ -311,11 +311,11 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     hospitalName: "Manipal Hospital Udupi",
     department: "Pediatrics",
     specialization: "Pediatrics",
-    appointmentDate: "2024-01-19",
+    appointmentDate: "2025-01-19",
     appointmentTime: "10:00",
     consultationFee: 650,
     status: "pending",
-    bookingDate: new Date("2024-01-17"),
+    bookingDate: new Date("2025-01-17"),
     symptoms: "Vaccination for 2-year-old child",
     notes: "Regular vaccination schedule",
     queueNumber: 2,
@@ -323,8 +323,8 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     priority: "normal",
     paymentStatus: "pending",
     paymentMethod: "online",
-    createdAt: new Date("2024-01-17"),
-    updatedAt: new Date("2024-01-17")
+    createdAt: new Date("2025-01-17"),
+    updatedAt: new Date("2025-01-17")
   },
   {
     id: "BOOK012",
@@ -338,11 +338,11 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     hospitalName: "Hi-Tech Medicare Hospital & Research Centre",
     department: "Neurology",
     specialization: "Neurology",
-    appointmentDate: "2024-01-20",
+    appointmentDate: "2025-01-20",
     appointmentTime: "09:00",
     consultationFee: 850,
     status: "confirmed",
-    bookingDate: new Date("2024-01-18"),
+    bookingDate: new Date("2025-01-18"),
     symptoms: "Frequent headaches and dizziness",
     notes: "Migraine-like symptoms",
     queueNumber: 1,
@@ -350,8 +350,8 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     priority: "normal",
     paymentStatus: "paid",
     paymentMethod: "card",
-    createdAt: new Date("2024-01-18"),
-    updatedAt: new Date("2024-01-18")
+    createdAt: new Date("2025-01-18"),
+    updatedAt: new Date("2025-01-18")
   },
   {
     id: "BOOK013",
@@ -365,11 +365,11 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     hospitalName: "Hi-Tech Medicare Hospital & Research Centre",
     department: "Gynecology",
     specialization: "Gynecology",
-    appointmentDate: "2024-01-20",
+    appointmentDate: "2025-01-20",
     appointmentTime: "10:00",
     consultationFee: 750,
     status: "completed",
-    bookingDate: new Date("2024-01-18"),
+    bookingDate: new Date("2025-01-18"),
     symptoms: "Irregular periods consultation",
     notes: "Treatment completed successfully",
     queueNumber: 2,
@@ -377,8 +377,8 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     priority: "normal",
     paymentStatus: "paid",
     paymentMethod: "online",
-    createdAt: new Date("2024-01-18"),
-    updatedAt: new Date("2024-01-20")
+    createdAt: new Date("2025-01-18"),
+    updatedAt: new Date("2025-01-20")
   },
   {
     id: "BOOK014",
@@ -392,11 +392,11 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     hospitalName: "A.J. Hospital & Research Centre",
     department: "Neurology",
     specialization: "Neurology",
-    appointmentDate: "2024-01-21",
+    appointmentDate: "2025-01-21",
     appointmentTime: "10:00",
     consultationFee: 900,
     status: "cancelled",
-    bookingDate: new Date("2024-01-19"),
+    bookingDate: new Date("2025-01-19"),
     symptoms: "Memory problems consultation",
     notes: "Patient cancelled due to emergency",
     queueNumber: 0,
@@ -404,8 +404,8 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     priority: "normal",
     paymentStatus: "refunded",
     paymentMethod: "online",
-    createdAt: new Date("2024-01-19"),
-    updatedAt: new Date("2024-01-20")
+    createdAt: new Date("2025-01-19"),
+    updatedAt: new Date("2025-01-20")
   },
   {
     id: "BOOK015",
@@ -419,11 +419,11 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     hospitalName: "Dr. TMA Pai Hospital",
     department: "Surgery",
     specialization: "Surgery",
-    appointmentDate: "2024-01-22",
+    appointmentDate: "2025-01-22",
     appointmentTime: "09:00",
     consultationFee: 700,
     status: "confirmed",
-    bookingDate: new Date("2024-01-20"),
+    bookingDate: new Date("2025-01-20"),
     symptoms: "Gallbladder stone consultation",
     notes: "Surgery consultation required",
     queueNumber: 1,
@@ -431,8 +431,8 @@ export const SAMPLE_BOOKINGS: Booking[] = [
     priority: "normal",
     paymentStatus: "paid",
     paymentMethod: "cash",
-    createdAt: new Date("2024-01-20"),
-    updatedAt: new Date("2024-01-20")
+    createdAt: new Date("2025-01-20"),
+    updatedAt: new Date("2025-01-20")
   }
 ];
 
