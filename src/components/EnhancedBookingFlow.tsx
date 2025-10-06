@@ -419,31 +419,23 @@ export const EnhancedBookingFlow = ({ selectedHospital, onBookingComplete, onHos
       
       // Add to queue system
       try {
+        const departmentName = DEPARTMENTS.find(d => d.id === bookingData.department)?.name || bookingData.department;
         const queueId = await addToQueue({
           patientId: currentUser.uid,
           patientName: patientProfile?.fullName || "Unknown",
           hospitalId: bookingData.hospitalname.id,
           hospitalName: bookingData.hospitalname.hospitalName,
-          department: bookingData.department,
+          department: departmentName,
           doctorId: selectedDoctor?.id,
           doctorName: selectedDoctor?.name,
           appointmentType: bookingData.appointmentType,
-          priority: bookingData.urgency === 'urgent' ? 'urgent' : 
+          priority: bookingData.urgency === 'urgent' ? 'urgent' :
                    bookingData.urgency === 'high' ? 'high' : 'normal',
           bookingId: booking.bookingId,
           estimatedWaitTime: 0 // Will be calculated in the service
         });
         
-        // Update booking with queue information
-        const queueNumber = await generateQueueNumber(bookingData.hospitalname.id, bookingData.department);
-        await addDoc(collection(db, "bookings"), {
-          ...booking,
-          queueId,
-          queueNumber,
-          estimatedWaitTime: 20 + (queueNumber - 1) * 5 // Simple estimation
-        });
-        
-        toast.success(`Booking confirmed! Your queue number is ${queueNumber}. Please arrive 15 minutes before your appointment.`);
+        toast.success(`Booking confirmed! You have been added to the queue. Please arrive 15 minutes before your appointment.`);
       } catch (queueError) {
         console.error("Error adding to queue:", queueError);
         // Still proceed with booking even if queue fails
